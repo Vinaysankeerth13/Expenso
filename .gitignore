@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+.env
+
+# IntelliJ/VSCode
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Project specific
+credentials.json
+token.json
+samples/
