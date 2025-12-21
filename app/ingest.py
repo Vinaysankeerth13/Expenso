@@ -19,6 +19,8 @@ Scheduling:
 """
 
 import os
+import sys
+sys.path.append(os.getcwd())
 import json
 import base64
 import re
@@ -176,13 +178,19 @@ def fetch_messages_for_query(service, q: str, max_results: int = 500) -> List[Di
     return messages
 
 
+from app import db_raw_emails
+
 def save_samples(messages: List[Dict], ym_folder: str, index_path: pathlib.Path):
     """
-    Save raw messages + index.
+    Save raw messages + index + DB insert.
     """
     outdir = RAW_DIR / ym_folder
     outdir.mkdir(parents=True, exist_ok=True)
     index = []
+    
+    # List for batch DB insert
+    db_items = []
+    
     for msg in messages:
         mid = msg.get("id")
         # build simplified metadata
@@ -194,6 +202,7 @@ def save_samples(messages: List[Dict], ym_folder: str, index_path: pathlib.Path)
             "from": headers.get("From"),
             "to": headers.get("To"),
             "subject": headers.get("Subject"),
+            "date": headers.get("Date"), # Added for DB
             "snippet": msg.get("snippet"),
             "raw_body": body,
             "fetched_at": datetime.utcnow().isoformat() + "Z"
@@ -203,11 +212,19 @@ def save_samples(messages: List[Dict], ym_folder: str, index_path: pathlib.Path)
         with open(fname, "w", encoding="utf-8") as f:
             json.dump(msg, f, ensure_ascii=False, indent=2)
         index.append(item)
+        db_items.append(item)
 
     # write index
     with open(index_path, "w", encoding="utf-8") as f:
         json.dump(index, f, ensure_ascii=False, indent=2)
     log.info("Saved %d messages raw to %s and index to %s", len(messages), outdir, index_path)
+    
+    # Insert into DB
+    try:
+        db_raw_emails.insert_raw_emails(db_items)
+    except Exception as e:
+        log.error(f"Failed to insert into DB: {e}")
+        
     return index_path
 
 

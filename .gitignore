@@ -17,3 +17,9 @@ venv/
 credentials.json
 token.json
 samples/
+
+# Documentation
+docs/Private_notes.md
+
+# Logs
+logs/
