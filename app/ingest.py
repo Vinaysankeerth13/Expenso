@@ -259,7 +259,7 @@ def get_keywords():
 # CLI entrypoint
 def cli():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", type=str, choices=["monthly", "daily"], default="monthly", help="Ingestion mode")
+    parser.add_argument("--mode", type=str, choices=["monthly", "daily", "incremental"], default="monthly", help="Ingestion mode")
     
     # Date args
     parser.add_argument("--year", type=int, help="Year (e.g. 2025)")
@@ -308,6 +308,31 @@ def cli():
         
         log.info(f"Daily Ingest: {target_date}")
         ingest_range(sender, target_date, target_date, keywords, args.max_results, mode="daily")
+
+    elif args.mode == "incremental":
+        # Check DB for last date
+        from datetime import timedelta
+        last_dt = db_raw_emails.get_last_email_date()
+        yesterday = date.today() - relativedelta(days=1)
+        
+        if last_dt:
+            # Start from next day
+            start_date = last_dt.date() + timedelta(days=1)
+        else:
+            # Fallback if DB empty: Fetch last 30 days? Or just yesterday?
+            # Let's default to start of current month to be safe/useful
+            log.info("No DB history found. Defaulting to start of current month.")
+            today = date.today()
+            start_date = date(today.year, today.month, 1)
+            
+        end_date = yesterday
+        
+        if start_date > end_date:
+            log.info(f"Incremental Ingest: DB is up to date (Last: {last_dt.date()}, End: {end_date}). Nothing to do.")
+            return
+
+        log.info(f"Incremental Ingest: Catching up from {start_date} to {end_date}")
+        ingest_range(sender, start_date, end_date, keywords, args.max_results, mode="daily")
 
 
 # APScheduler helper

@@ -86,3 +86,21 @@ def insert_raw_emails(emails: List[Dict[str, Any]]):
         raise
     finally:
         conn.close()
+
+def get_last_email_date() -> datetime:
+    """
+    Get the received_at timestamp of the most recent email.
+    """
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT MAX(received_at) FROM raw_emails")
+            row = cur.fetchone()
+            if row and row[0]:
+                return row[0]
+            return None
+    except Exception as e:
+        log.error(f"Failed to get last email date: {e}")
+        return None
+    finally:
+        conn.close()
