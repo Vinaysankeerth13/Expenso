@@ -6,6 +6,7 @@ sys.path.append(os.getcwd())
 from app.transaction_event import extract_transaction
 
 def process_file(input_path, output_path):
+    """Reads raw email JSONs from input, extracts transaction events, and writes them to output."""
     with open(input_path, "r", encoding="utf-8") as f:
         emails = json.load(f)
     

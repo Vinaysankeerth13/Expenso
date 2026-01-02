@@ -1,6 +1,7 @@
 # placeholder LLM extractor (mock) for Day 1
 import json
 def mock_extract(sample):
+    """Returns a mocked transaction extraction dictionary for development/testing."""
     return {
         "source_id": sample["id"],
         "amount": 1299.0 if "1299" in sample["body"] else 2000.0,

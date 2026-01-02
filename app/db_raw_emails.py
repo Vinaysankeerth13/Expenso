@@ -16,6 +16,7 @@ DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "5432")
 
 def get_connection():
+    """Establishes and returns a connection to the PostgreSQL database."""
     return psycopg2.connect(
         dbname=DB_NAME,
         user=DB_USER,
@@ -25,6 +26,7 @@ def get_connection():
     )
 
 def parse_email_date(date_str: str) -> datetime:
+    """Parses an email header date string into a datetime object, defaulting to UTC now on failure."""
     if not date_str:
         return datetime.utcnow()
     try:
@@ -34,11 +36,7 @@ def parse_email_date(date_str: str) -> datetime:
         return datetime.utcnow()
 
 def insert_raw_emails(emails: List[Dict[str, Any]]):
-    """
-    Batch insert emails into raw_emails table.
-    Schema:
-    id (serial), gmail_message_id, thread_id, sender, subject, snippet, raw_body, received_at, ingested_at, source
-    """
+    """Batch inserts raw email data into the 'raw_emails' table, ignoring duplicates."""
     if not emails:
         return
 
@@ -88,9 +86,7 @@ def insert_raw_emails(emails: List[Dict[str, Any]]):
         conn.close()
 
 def get_last_email_date() -> datetime:
-    """
-    Get the received_at timestamp of the most recent email.
-    """
+    """Retrieves the 'received_at' timestamp of the most recent email in the database."""
     conn = get_connection()
     try:
         with conn.cursor() as cur:

@@ -13,6 +13,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("check_coverage")
 
 def check_coverage(year=2025, month=8, sender="alerts@hdfcbank.net"):
+    """Fetches all emails for a month and reports how many are matched by current keywords vs. missed."""
     # 1. Get Keywords
     # We duplicate them here or import them? Importing is better to stay in sync.
     from app.ingest import get_keywords

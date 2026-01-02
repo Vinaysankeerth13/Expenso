@@ -7,6 +7,7 @@ from datetime import datetime
 log = logging.getLogger("transaction_event")
 
 def parse_amount(text: str) -> Optional[float]:
+    """Extracts the first monetary amount (Rs. or INR) from the text."""
     # Look for Rs. 123.45 or INR 123.45
     # Handle commas: 1,234.50
     matches = re.findall(r"(?:Rs\.?|INR)\s*([\d,]+\.?\d*)", text, re.IGNORECASE)
@@ -20,6 +21,7 @@ def parse_amount(text: str) -> Optional[float]:
     return None
 
 def parse_date(text: str) -> Optional[str]:
+    """Extracts date from text in 'DD-MM-YY' or 'DD Mon, YYYY' format."""
     # Formats seen: 
     # "28-11-25" -> DD-MM-YY
     # "28 Nov, 2025" -> DD Mon, YYYY
@@ -47,10 +49,7 @@ def parse_date(text: str) -> Optional[str]:
     return None
 
 def extract_transaction(email: Dict) -> Dict[str, Any]:
-    """
-    Convert raw email JSON to TransactionEvent JSON.
-    Prioritizes 'snippet'.
-    """
+    """Parses a raw email dictionary into a standardized TransactionEvent structure."""
     snippet = email.get("snippet", "")
     # Clean whitespace
     snippet = " ".join(snippet.split())

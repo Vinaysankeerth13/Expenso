@@ -18,6 +18,7 @@ TOKEN_PATH = os.getenv("TOKEN_PATH", "token.pickle")
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
 def get_service():
+    """Authenticates with Gmail API using pickled credentials (legacy method)."""
     creds = None
     if os.path.exists(TOKEN_PATH):
         with open(TOKEN_PATH, "rb") as token:
@@ -33,6 +34,7 @@ def get_service():
     return build("gmail", "v1", credentials=creds)
 
 def fetch_emails(max_results=20):
+    """Fetches a list of cleaned email bodies from the inbox (legacy implementation)."""
     service = get_service()
     results = service.users().messages().list(userId="me", maxResults=max_results).execute()
     messages = results.get("messages", [])

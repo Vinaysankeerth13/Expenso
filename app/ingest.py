@@ -13,7 +13,7 @@ Usage examples:
 
 Scheduling:
   - Cron (recommended for production) example (run at 03:00 on the 1st of every month):
-      0 3 1 * * cd /Users/srisan/Desktop/Expenso && poetry run python app/ingest_monthly.py --prev-month
+      0 3 1 * * cd /Users/srisan/Projects/Expenso && poetry run python app/ingest_monthly.py --prev-month
 
   - Or run as a long-running process using APScheduler (example included in this file).
 """
@@ -37,6 +37,10 @@ from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from googleapiclient.errors import HttpError
+import socket
+import time
+import random
 
 # Optional: APScheduler for long-running scheduling
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -60,6 +64,7 @@ log = logging.getLogger("ingest")
 
 
 def get_gmail_service(credentials_path: Optional[str] = None, token_path: Optional[str] = None):
+    """Authenticates with Gmail API using OAuth2 and returns the service object."""
     credentials_path = credentials_path or CREDENTIALS_PATH
     token_path = token_path or TOKEN_PATH
     creds = None
@@ -82,12 +87,7 @@ def get_gmail_service(credentials_path: Optional[str] = None, token_path: Option
 
 
 def build_gmail_query(sender: str, start_date: date, end_date: date, extra_terms: Optional[List[str]] = None) -> str:
-    """
-    Build a Gmail query string.
-    - sender: exact email (from:)
-    - start_date, end_date: inclusive date objects (we convert to after:YYYY/MM/DD and before:YYYY/MM/DD where before = end_date + 1 day)
-    - extra_terms: list of keywords/subject fragments to include (OR)
-    """
+    """Constructs a Gmail search query string filtering by sender, date range, and optional keywords."""
     # Gmail uses after:YYYY/MM/DD (inclusive) and before:YYYY/MM/DD (exclusive).
     after = start_date.strftime("%Y/%m/%d")
     before_dt = end_date + relativedelta(days=1)
@@ -112,10 +112,7 @@ def build_gmail_query(sender: str, start_date: date, end_date: date, extra_terms
 
 
 def extract_body_from_message(msg: Dict) -> str:
-    """
-    Conservative extraction: prefer text/plain parts, fallback to first part; return decoded string (no HTML tag stripping).
-    For cleaning we'll deliberately keep raw body saved; downstream cleaning can use BeautifulSoup.
-    """
+    """Extracts email body, preferring text/plain, without stripping HTML tags."""
     payload = msg.get("payload", {})
     parts = payload.get("parts", [])
     body = ""
@@ -152,21 +149,41 @@ def extract_body_from_message(msg: Dict) -> str:
     return body
 
 
+def execute_with_retry(request, retries=5, delay=2, backoff=2):
+    """Executes a Google API request with exponential backoff retry for network resilience."""
+    for i in range(retries):
+        try:
+            return request.execute()
+        except (TimeoutError, socket.timeout, HttpError) as e:
+            # Check for 5xx errors or specific transport errors if it's an HttpError
+            if isinstance(e, HttpError):
+                if e.resp.status < 500:
+                    raise e
+            
+            if i == retries - 1:
+                log.error(f"Request failed after {retries} retries: {e}")
+                raise e
+            
+            sleep_time = delay * (backoff ** i) + random.uniform(0, 1)
+            log.warning(f"Request failed ({e}), retrying in {sleep_time:.2f}s...")
+            time.sleep(sleep_time)
+
+
+
 def fetch_messages_for_query(service, q: str, max_results: int = 500) -> List[Dict]:
-    """
-    Fetch full message objects for the given Gmail query `q`. Returns list of full message JSONs.
-    """
+    """Fetches full email message objects (including body/headers) matching the query."""
     messages = []
     page_token = None
     fetched = 0
     while True:
         req = service.users().messages().list(userId="me", q=q, maxResults=min(max_results - fetched, 100), pageToken=page_token)
-        resp = req.execute()
+        resp = execute_with_retry(req)
         ids = resp.get("messages", []) or []
         if not ids:
             break
         for m in ids:
-            full = service.users().messages().get(userId="me", id=m["id"], format="full").execute()
+            get_req = service.users().messages().get(userId="me", id=m["id"], format="full")
+            full = execute_with_retry(get_req)
             messages.append(full)
             fetched += 1
             if fetched >= max_results:
@@ -181,9 +198,7 @@ def fetch_messages_for_query(service, q: str, max_results: int = 500) -> List[Di
 from app import db_raw_emails
 
 def save_samples(messages: List[Dict], ym_folder: str, index_path: pathlib.Path):
-    """
-    Save raw messages + index + DB insert.
-    """
+    """Saves raw email JSONs to disk, creates a summary index, and inserts metadata into the DB."""
     outdir = RAW_DIR / ym_folder
     outdir.mkdir(parents=True, exist_ok=True)
     index = []
@@ -229,10 +244,7 @@ def save_samples(messages: List[Dict], ym_folder: str, index_path: pathlib.Path)
 
 
 def ingest_range(sender: str, start: date, end: date, keywords: Optional[List[str]] = None, max_results: int = 500, mode: str = "monthly"):
-    """
-    Generic ingest fetching [start, end].
-    mode: 'monthly' or 'daily' dictates where the index file is saved.
-    """
+    """Orchestrates email fetching and saving for a specified date range and mode."""
     query = build_gmail_query(sender=sender, start_date=start, end_date=end, extra_terms=keywords)
     svc = get_gmail_service()
     msgs = fetch_messages_for_query(svc, q=query, max_results=max_results)
@@ -253,11 +265,13 @@ def ingest_range(sender: str, start: date, end: date, keywords: Optional[List[st
 
 
 def get_keywords():
+    """Returns a list of keywords used to filter relevant transaction emails."""
     return ["receipt", "payment", "transaction", "debited", "credited", "withdrawal", "order", "txn", "failed", "attempted"]
 
 
 # CLI entrypoint
 def cli():
+    """Parses command-line arguments and triggers the appropriate ingestion mode (monthly/daily/incremental)."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", type=str, choices=["monthly", "daily", "incremental"], default="monthly", help="Ingestion mode")
     
@@ -337,9 +351,7 @@ def cli():
 
 # APScheduler helper
 def run_scheduler():
-    """
-    Example scheduler. 
-    """
+    """Starts a background scheduler to run monthly and daily ingestion jobs automatically."""
     sched = BackgroundScheduler()
     
     # Monthly job: 1st of every month at 03:00
