@@ -3,7 +3,7 @@ import logging
 import psycopg2
 from psycopg2 import sql
 from typing import List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from dateutil import parser as date_parser
 
 log = logging.getLogger("db_raw_emails")
@@ -28,12 +28,12 @@ def get_connection():
 def parse_email_date(date_str: str) -> datetime:
     """Parses an email header date string into a datetime object, defaulting to UTC now on failure."""
     if not date_str:
-        return datetime.utcnow()
+        return datetime.now(timezone.utc)
     try:
         return date_parser.parse(date_str)
     except Exception:
         log.warning(f"Could not parse date: {date_str}, using now()")
-        return datetime.utcnow()
+        return datetime.now(timezone.utc)
 
 def insert_raw_emails(emails: List[Dict[str, Any]]):
     """Batch inserts raw email data into the 'raw_emails' table, ignoring duplicates."""

@@ -48,14 +48,42 @@ def parse_date(text: str) -> Optional[str]:
             
     return None
 
+def generate_transaction_id(event: Dict) -> str:
+    """
+    Generate a unique and consistent transaction ID.
+
+    Strategy:
+    - UPI transactions: use bank reference ID (guaranteed unique)
+    - Card transactions: use email ID (Gmail message IDs are globally unique)
+
+    Format: {source}_{reference_id or email_id}
+
+    Args:
+        event: Transaction event dict with source, reference_id, raw_email_id
+
+    Returns:
+        Unique transaction ID string
+    """
+    source = event.get("source", "unknown")
+    reference_id = event.get("reference_id")
+    raw_email_id = event["raw_email_id"]
+
+    if reference_id:
+        # UPI transactions have bank-provided reference IDs
+        return f"{source}_{reference_id}"
+    else:
+        # Cards and other channels use email ID
+        return f"{source}_{raw_email_id}"
+
+
 def extract_transaction(email: Dict) -> Dict[str, Any]:
     """Parses a raw email dictionary into a standardized TransactionEvent structure."""
     snippet = email.get("snippet", "")
     # Clean whitespace
     snippet = " ".join(snippet.split())
-    
+
     signals = []
-    
+
     # Defaults
     source = "unknown"
     status = "unknown"
@@ -64,7 +92,7 @@ def extract_transaction(email: Dict) -> Dict[str, Any]:
     ref_id = None
     amount = parse_amount(snippet)
     date_str = parse_date(snippet)
-    
+
     text_processed = "snippet"
 
     # --- Identify Signals & Source ---

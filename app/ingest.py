@@ -29,7 +29,7 @@ import pathlib
 import argparse
 import logging
 from typing import List, Dict, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from dateutil.relativedelta import relativedelta
 
 from dotenv import load_dotenv
@@ -220,7 +220,7 @@ def save_samples(messages: List[Dict], ym_folder: str, index_path: pathlib.Path)
             "date": headers.get("Date"), # Added for DB
             "snippet": msg.get("snippet"),
             "raw_body": body,
-            "fetched_at": datetime.utcnow().isoformat() + "Z"
+            "fetched_at": datetime.now(timezone.utc).isoformat()
         }
         # write per-message raw file
         fname = outdir / f"msg_{mid}.json"
