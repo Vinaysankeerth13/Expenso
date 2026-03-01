@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Expenso{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        maroon: {
+                            50: '#fdf2f2',
+                            100: '#fce4e4',
+                            200: '#fbcdcd',
+                            300: '#f6a3a3',
+                            400: '#ee6b6b',
+                            500: '#e33d3d',
+                            600: '#d02424',
+                            700: '#ae1b1b',
+                            800: '#8B1A1A',
+                            900: '#761919',
+                            950: '#400a0a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7"></script>
+    <link rel="stylesheet" href="/static/app.css">
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-gray-100 text-gray-900 min-h-screen flex flex-col">
+    <!-- Navigation -->
+    <nav class="bg-white border-b border-gray-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6">
+            <div class="flex items-center justify-between h-16">
+                <!-- Logo -->
+                <a href="/" class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-maroon-800 rounded-lg flex items-center justify-center">
+                        <span class="text-white font-bold text-sm">E</span>
+                    </div>
+                    <span class="text-xl font-bold text-maroon-800 tracking-tight">EXPENSO</span>
+                </a>
+
+                <!-- Desktop Nav -->
+                <div class="hidden sm:flex items-center gap-1">
+                    {% set current_path = request.url.path %}
+                    <a href="/year/{{ now_year }}"
+                       class="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                              {% if '/year/' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+                        Year
+                    </a>
+                    <a href="/month/{{ now_year }}/{{ now_month }}"
+                       class="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                              {% if '/month/' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+                        Month
+                    </a>
+                    <a href="/transactions"
+                       class="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                              {% if '/transactions' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+                        Transactions
+                    </a>
+                </div>
+
+                <!-- Mobile hamburger -->
+                <button onclick="document.getElementById('mobile-menu').classList.toggle('hidden')"
+                        class="sm:hidden p-2 rounded-lg hover:bg-gray-100">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Mobile menu -->
+        <div id="mobile-menu" class="hidden sm:hidden border-t border-gray-200 bg-white px-4 py-3 space-y-1">
+            <a href="/year/{{ now_year }}"
+               class="block px-3 py-2 rounded-lg text-sm font-medium
+                      {% if '/year/' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600{% endif %}">
+                Year
+            </a>
+            <a href="/month/{{ now_year }}/{{ now_month }}"
+               class="block px-3 py-2 rounded-lg text-sm font-medium
+                      {% if '/month/' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600{% endif %}">
+                Month
+            </a>
+            <a href="/transactions"
+               class="block px-3 py-2 rounded-lg text-sm font-medium
+                      {% if '/transactions' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600{% endif %}">
+                Transactions
+            </a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 py-4 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 text-center text-sm text-gray-400">
+            Expenso &middot; Personal Finance Tracker
+        </div>
+    </footer>
+
+    <script src="/static/app.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

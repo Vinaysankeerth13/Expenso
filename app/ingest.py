@@ -57,6 +57,10 @@ RAW_DIR = SAMPLES_DIR / "raw"
 DAILY_DIR = SAMPLES_DIR / "daily"
 DAILY_DIR.mkdir(parents=True, exist_ok=True)
 
+# HDFC Bank sender addresses (support both old and new)
+# HDFC switched from .net to .bank.in around Feb 2026
+HDFC_SENDERS = ["alerts@hdfcbank.bank.in", "alerts@hdfcbank.net"]
+
 
 # Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -86,14 +90,31 @@ def get_gmail_service(credentials_path: Optional[str] = None, token_path: Option
     return service
 
 
-def build_gmail_query(sender: str, start_date: date, end_date: date, extra_terms: Optional[List[str]] = None) -> str:
-    """Constructs a Gmail search query string filtering by sender, date range, and optional keywords."""
+def build_gmail_query(sender, start_date: date, end_date: date, extra_terms: Optional[List[str]] = None) -> str:
+    """Constructs a Gmail search query string filtering by sender(s), date range, and optional keywords.
+
+    Args:
+        sender: Single email (str) or list of emails (list) to search from
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+        extra_terms: Optional keywords to search for
+
+    Returns:
+        Gmail search query string
+    """
     # Gmail uses after:YYYY/MM/DD (inclusive) and before:YYYY/MM/DD (exclusive).
     after = start_date.strftime("%Y/%m/%d")
     before_dt = end_date + relativedelta(days=1)
     before = before_dt.strftime("%Y/%m/%d")
 
-    base = f'from:{sender} after:{after} before:{before}'
+    # Handle multiple senders with OR operator
+    if isinstance(sender, list):
+        sender_parts = [f'from:{s}' for s in sender]
+        sender_clause = f'({" OR ".join(sender_parts)})'
+    else:
+        sender_clause = f'from:{sender}'
+
+    base = f'{sender_clause} after:{after} before:{before}'
 
     if extra_terms:
         # prepare OR expression: wrap multi-word terms in quotes
@@ -286,10 +307,11 @@ def cli():
     parser.add_argument("--today", action="store_true", help="Run for today (daily mode)") # just in case
 
     parser.add_argument("--max-results", type=int, default=500, help="Maximum emails to fetch")
-    parser.add_argument("--sender", type=str, default="alerts@hdfcbank.net", help="Sender email address")
+    parser.add_argument("--sender", type=str, default=None, help="Sender email address (default: both HDFC senders)")
     args = parser.parse_args()
 
-    sender = args.sender
+    # Use both HDFC senders by default, or single sender if specified
+    sender = args.sender if args.sender else HDFC_SENDERS
     keywords = get_keywords()
     
     if args.mode == "monthly":
@@ -363,7 +385,7 @@ def run_scheduler():
             # call logic directly
             start = first
             end = (start + relativedelta(months=1)) - relativedelta(days=1)
-            ingest_range("alerts@hdfcbank.net", start, end, get_keywords(), 1000, "monthly")
+            ingest_range(HDFC_SENDERS, start, end, get_keywords(), 1000, "monthly")
         except Exception as e:
             log.exception(f"Monthly job failed: {e}")
 
@@ -372,7 +394,7 @@ def run_scheduler():
         try:
             target = date.today() - relativedelta(days=1)
             log.info(f"Running daily job for {target}")
-            ingest_range("alerts@hdfcbank.net", target, target, get_keywords(), 500, "daily")
+            ingest_range(HDFC_SENDERS, target, target, get_keywords(), 500, "daily")
         except Exception as e:
             log.exception(f"Daily job failed: {e}")
 

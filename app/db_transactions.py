@@ -239,7 +239,8 @@ def get_transaction_stats() -> Dict[str, Any]:
 
 
 def update_transaction_category(transaction_id: str, category: str,
-                                subcategory: Optional[str] = None,
+                                confidence: float = 1.0,
+                                classification_source: str = 'manual',
                                 notes: Optional[str] = None) -> bool:
     """
     Updates category for a specific transaction.
@@ -247,8 +248,9 @@ def update_transaction_category(transaction_id: str, category: str,
     Args:
         transaction_id: Unique transaction ID
         category: Category name
-        subcategory: Optional subcategory
-        notes: Optional notes
+        confidence: Classification confidence (1.0 for rules/manual, 0.0-1.0 for LLM)
+        classification_source: How category was assigned ('rule', 'llm', 'manual')
+        notes: Optional notes (e.g., LLM rationale)
 
     Returns:
         True if updated, False otherwise
@@ -259,16 +261,20 @@ def update_transaction_category(transaction_id: str, category: str,
             query = """
                 UPDATE transactions
                 SET category = %s,
+                    classification_source = %s,
+                    classification_confidence = %s,
                     notes = COALESCE(%s, notes),
                     updated_at = NOW()
                 WHERE transaction_id = %s;
             """
-            cur.execute(query, (category, notes, transaction_id))
+            cur.execute(query, (category, classification_source, confidence,
+                                notes, transaction_id))
             conn.commit()
             updated = cur.rowcount > 0
 
             if updated:
-                log.info(f"Updated category for transaction {transaction_id} to '{category}'")
+                log.info(f"Updated category for {transaction_id}: '{category}' "
+                         f"(source={classification_source}, confidence={confidence})")
             else:
                 log.warning(f"Transaction {transaction_id} not found")
 
@@ -277,6 +283,43 @@ def update_transaction_category(transaction_id: str, category: str,
         log.error(f"Failed to update transaction category: {e}")
         conn.rollback()
         return False
+    finally:
+        conn.close()
+
+
+def update_transaction_category_by_id(
+    row_id: int,
+    category: str,
+    classification_source: str = 'manual',
+    confidence: float = 1.0,
+) -> Optional[Dict[str, Any]]:
+    """
+    Updates category for a transaction by its integer PK.
+    Returns the updated row fields needed for re-rendering, or None on failure.
+    """
+    conn = get_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                UPDATE transactions
+                SET category = %s,
+                    classification_source = %s,
+                    classification_confidence = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+                RETURNING id, date, amount, currency, direction, merchant, category
+            """, (category, classification_source, confidence, row_id))
+            conn.commit()
+            row = cur.fetchone()
+            if row:
+                log.info(f"Updated category for id={row_id}: '{category}' (source={classification_source})")
+                return dict(row)
+            log.warning(f"Transaction id={row_id} not found")
+            return None
+    except Exception as e:
+        log.error(f"Failed to update transaction category by id: {e}")
+        conn.rollback()
+        return None
     finally:
         conn.close()
 
