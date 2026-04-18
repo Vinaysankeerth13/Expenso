@@ -12,21 +12,12 @@ from datetime import date
 from typing import Any, Dict, List
 
 import anthropic
-import psycopg2
 from psycopg2.extras import RealDictCursor
 
-log = logging.getLogger("nlq_service")
+from app.config import ANTHROPIC_MODEL
+from app.db_connection import get_connection
 
-# ── DB connection ────────────────────────────────────────────────────────────
-
-def _get_connection():
-    return psycopg2.connect(
-        dbname=os.getenv("DB_NAME", "expenso"),
-        user=os.getenv("DB_USER", "postgres"),
-        password=os.getenv("DB_PASS", "postgres"),
-        host=os.getenv("DB_HOST", "localhost"),
-        port=os.getenv("DB_PORT", "5432"),
-    )
+log = logging.getLogger(__name__)
 
 
 # ── Prompt construction ──────────────────────────────────────────────────────
@@ -186,9 +177,11 @@ def _validate_sql(sql: str) -> str:
 # ── Execution ────────────────────────────────────────────────────────────────
 
 def _execute(sql: str) -> List[Dict[str, Any]]:
-    conn = _get_connection()
+    """Runs the validated SELECT query with an 8-second timeout and returns all rows."""
+    conn = get_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SET statement_timeout = '8s'")
             cur.execute(sql)
             return [dict(row) for row in cur.fetchall()]
     finally:
@@ -259,7 +252,7 @@ def ask(question: str) -> Dict[str, Any]:
         system, messages = _build_messages(question)
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=ANTHROPIC_MODEL,
             max_tokens=512,
             system=system,
             messages=messages,

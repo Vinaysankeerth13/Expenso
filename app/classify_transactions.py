@@ -36,31 +36,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app import db_transactions
+from app.config import ANTHROPIC_MODEL, CATEGORIES
 from app.db_merchant_categories import (
     lookup_merchant_category,
     insert_merchant_category,
     get_classification_stats,
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
-log = logging.getLogger("classify_transactions")
-
-# Valid categories
-CATEGORIES = [
-    "Food & Dining",
-    "Groceries",
-    "Entertainment",
-    "Subscriptions",
-    "Shopping",
-    "Transport & Fuel",
-    "Health & Personal",
-    "Transfers",
-    "Income",
-    "Other",
-]
+log = logging.getLogger(__name__)
 
 # Known prefixes added by payment gateways
 MERCHANT_PREFIXES = re.compile(
@@ -250,7 +233,7 @@ Rules:
     try:
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=ANTHROPIC_MODEL,
             max_tokens=150,
             messages=[{"role": "user", "content": prompt}],
         )

@@ -62,9 +62,7 @@ DAILY_DIR.mkdir(parents=True, exist_ok=True)
 HDFC_SENDERS = ["alerts@hdfcbank.bank.in", "alerts@hdfcbank.net"]
 
 
-# Logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-log = logging.getLogger("ingest")
+log = logging.getLogger(__name__)
 
 
 def get_gmail_service(credentials_path: Optional[str] = None, token_path: Optional[str] = None):

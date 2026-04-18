@@ -1,7 +1,4 @@
-"""
-HTMX partial endpoints. Returns HTML fragments, not JSON.
-Only imports from the service layer.
-"""
+"""HTMX partial endpoints — returns HTML fragments, never full pages."""
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
@@ -19,12 +16,8 @@ templates = Jinja2Templates(directory="app/templates")
 
 
 @router.get("/filtered-transactions")
-async def filtered_transactions(
-    request: Request,
-    q: str = "",
-    category: str = "",
-    page: int = 1,
-):
+async def filtered_transactions(request: Request, q: str = "", category: str = "", page: int = 1):
+    """Returns a filtered transaction rows partial for the live search UI."""
     data = get_transactions_page_data(
         query=q or None,
         category=category or None,
@@ -37,10 +30,8 @@ async def filtered_transactions(
 
 
 @router.post("/ask")
-async def ask_question(
-    request: Request,
-    question: str = Form(...),
-):
+async def ask_question(request: Request, question: str = Form(...)):
+    """Accepts a natural language question, runs it through the NLQ service, and returns a response card."""
     result = nlq_ask(question)
     return templates.TemplateResponse(
         "partials/ask_response.html",
@@ -49,11 +40,8 @@ async def ask_question(
 
 
 @router.post("/update-category")
-async def update_transaction_category(
-    request: Request,
-    ref: int = Form(...),
-    category: str = Form(...),
-):
+async def update_transaction_category(request: Request, ref: int = Form(...), category: str = Form(...)):
+    """Updates the category of a transaction and returns the re-rendered row for inline swap."""
     result = update_category(ref, category)
 
     if not result.get("success"):

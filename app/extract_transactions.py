@@ -31,11 +31,6 @@ from dateutil import parser as date_parser
 from app import db_transactions
 from app.transaction_event import extract_transaction, generate_transaction_id
 
-# Logging setup
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
 log = logging.getLogger("extract_transactions")
 
 

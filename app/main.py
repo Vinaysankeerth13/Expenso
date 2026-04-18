@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -5,6 +6,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 
 app = FastAPI(title="Expenso")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")

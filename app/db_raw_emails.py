@@ -1,32 +1,18 @@
-import os
+"""Database operations for the raw_emails table."""
+
 import logging
-import psycopg2
-from psycopg2 import sql
-from typing import List, Dict, Any
 from datetime import datetime, timezone
+from typing import Any, Dict, List
+
 from dateutil import parser as date_parser
 
-log = logging.getLogger("db_raw_emails")
+from app.db_connection import get_connection
 
-# Config
-DB_NAME = os.getenv("DB_NAME", "expenso")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASS = os.getenv("DB_PASS", "postgres")
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5432")
+log = logging.getLogger(__name__)
 
-def get_connection():
-    """Establishes and returns a connection to the PostgreSQL database."""
-    return psycopg2.connect(
-        dbname=DB_NAME,
-        user=DB_USER,
-        password=DB_PASS,
-        host=DB_HOST,
-        port=DB_PORT
-    )
 
 def parse_email_date(date_str: str) -> datetime:
-    """Parses an email header date string into a datetime object, defaulting to UTC now on failure."""
+    """Parses an email header date string into a UTC datetime, defaulting to now on failure."""
     if not date_str:
         return datetime.now(timezone.utc)
     try:
@@ -35,8 +21,9 @@ def parse_email_date(date_str: str) -> datetime:
         log.warning(f"Could not parse date: {date_str}, using now()")
         return datetime.now(timezone.utc)
 
-def insert_raw_emails(emails: List[Dict[str, Any]]):
-    """Batch inserts raw email data into the 'raw_emails' table, ignoring duplicates."""
+
+def insert_raw_emails(emails: List[Dict[str, Any]]) -> None:
+    """Batch-inserts raw email records, silently skipping any duplicates."""
     if not emails:
         return
 
@@ -44,57 +31,43 @@ def insert_raw_emails(emails: List[Dict[str, Any]]):
     try:
         with conn.cursor() as cur:
             query = """
-                INSERT INTO raw_emails 
+                INSERT INTO raw_emails
                 (gmail_message_id, thread_id, sender, subject, snippet, raw_body, received_at, source)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (gmail_message_id) 
-                DO NOTHING;
+                ON CONFLICT (gmail_message_id) DO NOTHING
             """
-            
-            # Prepare data
-            data_tuples = []
-            for e in emails:
-                # Extract fields
-                gmail_id = e.get("id")
-                thread_id = e.get("threadId")
-                sender = e.get("from")
-                subject = e.get("subject")
-                snippet = e.get("snippet")
-                raw_body = e.get("raw_body")
-                
-                # 'date' key might be passed if we extracted it, otherwise look in headers if full object
-                # Update: ingest.py constructs a simplified dict. We need to make sure it includes 'date'.
-                # For now, assumes 'date' is in the passed dict, or we fallback.
-                date_str = e.get("date") # Header Date
-                received_at = parse_email_date(date_str)
-                
-                source = "gmail"
-                
-                data_tuples.append((
-                    gmail_id, thread_id, sender, subject, snippet, raw_body, received_at, source
-                ))
-            
+            data_tuples = [
+                (
+                    e.get("id"),
+                    e.get("threadId"),
+                    e.get("from"),
+                    e.get("subject"),
+                    e.get("snippet"),
+                    e.get("raw_body"),
+                    parse_email_date(e.get("date")),
+                    "gmail",
+                )
+                for e in emails
+            ]
             cur.executemany(query, data_tuples)
             conn.commit()
-            log.info(f"Inserted/Ignored {len(data_tuples)} raw emails into DB.")
-            
+            log.info(f"Inserted/ignored {len(data_tuples)} raw emails.")
     except Exception as e:
-        log.error(f"DB Error: {e}")
+        log.error(f"Failed to insert raw emails: {e}")
         conn.rollback()
         raise
     finally:
         conn.close()
 
-def get_last_email_date() -> datetime:
-    """Retrieves the 'received_at' timestamp of the most recent email in the database."""
+
+def get_last_email_date() -> datetime | None:
+    """Returns the received_at timestamp of the most recently stored email."""
     conn = get_connection()
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT MAX(received_at) FROM raw_emails")
             row = cur.fetchone()
-            if row and row[0]:
-                return row[0]
-            return None
+            return row[0] if row and row[0] else None
     except Exception as e:
         log.error(f"Failed to get last email date: {e}")
         return None

@@ -19,12 +19,22 @@ mkdir -p logs
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Running ingestion health check..." | tee -a "$LOG_FILE"
 
-# Query database for last email received date
-LAST_EMAIL_DATE=$(psql -U postgres -d expenso -t -c "SELECT MAX(received_at)::date FROM raw_emails;" 2>/dev/null | xargs)
+# Query database for last email received date (load .env for DB creds)
+if [ -f "$(dirname "$0")/../.env" ]; then
+    export $(grep -v '^#' "$(dirname "$0")/../.env" | xargs)
+fi
+DB_NAME="${DB_NAME:-expenso}"
+DB_USER="${DB_USER:-postgres}"
+DB_PASS="${DB_PASS:-postgres}"
+DB_HOST="${DB_HOST:-localhost}"
+
+LAST_EMAIL_DATE=$(PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT MAX(received_at)::date FROM raw_emails;" 2>/tmp/expenso_health_psql.err | xargs)
 
 if [ -z "$LAST_EMAIL_DATE" ]; then
-    echo "⚠️  WARNING: No emails found in database!" | tee -a "$LOG_FILE"
-    osascript -e 'display notification "No emails in database! Check Expenso pipeline." with title "Expenso Alert"'
+    PSQL_ERR=$(cat /tmp/expenso_health_psql.err 2>/dev/null)
+    echo "⚠️  WARNING: Could not read last email date from DB." | tee -a "$LOG_FILE"
+    echo "    psql error: $PSQL_ERR" | tee -a "$LOG_FILE"
+    osascript -e 'display notification "Could not read from DB. Check Expenso pipeline." with title "Expenso Alert"'
     exit 1
 fi
 

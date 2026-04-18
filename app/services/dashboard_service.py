@@ -9,7 +9,7 @@ from typing import Dict, Any, List, Optional
 from app import db_dashboard, db_transactions
 import logging
 
-log = logging.getLogger("dashboard_service")
+log = logging.getLogger(__name__)
 
 MONTH_NAMES = [
     "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
