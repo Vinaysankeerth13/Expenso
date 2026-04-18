@@ -63,6 +63,37 @@
     </div>
 </div>
 
+<!-- Anomaly Callouts (current month only) -->
+{% if anomalies %}
+<div class="mb-6 space-y-3">
+    {% for a in anomalies %}
+    <div class="flex items-start gap-4 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4">
+        <div class="mt-0.5 flex-shrink-0">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center" style="background-color: {{ a.color }}20;">
+                <svg class="w-4 h-4" style="color: {{ a.color }};" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                </svg>
+            </div>
+        </div>
+        <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-sm font-semibold text-gray-900">{{ a.category }}</span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                    +{{ a.velocity_pct }}% above average
+                </span>
+            </div>
+            <p class="text-sm text-gray-600 mt-0.5">
+                Spending <span class="font-medium text-gray-900">{{ a.current_amount }}</span> this month
+                vs. <span class="font-medium">{{ a.avg_amount }}</span> avg
+                &mdash; <span class="font-medium text-amber-700">{{ a.abs_deviation }} over budget</span>
+            </p>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
 <!-- Daily Spending Trend -->
 <div class="bg-white rounded-2xl p-6 shadow-sm mb-6">
     <h2 class="text-lg font-semibold mb-4">Daily Spending Trend</h2>

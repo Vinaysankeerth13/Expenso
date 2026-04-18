@@ -7,6 +7,9 @@ No DB column names, no SQL artifacts leak past this layer.
 from datetime import date, datetime
 from typing import Dict, Any, List, Optional
 from app import db_dashboard, db_transactions
+import logging
+
+log = logging.getLogger("dashboard_service")
 
 MONTH_NAMES = [
     "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -188,6 +191,30 @@ def _build_spend_map(monthly_data: list) -> Dict[str, Any]:
     return {"blocks": blocks}
 
 
+def _get_anomaly_callouts(year: int, month: int) -> List[Dict[str, Any]]:
+    today = date.today()
+    if (year, month) != (today.year, today.month):
+        return []
+    try:
+        from app.anomaly_detector import detect_anomalies
+        result = detect_anomalies(lookback_months=3, threshold_pct=50.0, min_abs_deviation=500.0)
+        callouts = []
+        for a in result.get("anomalies", []):
+            callouts.append({
+                "category": a["category"],
+                "color": CATEGORY_COLORS.get(a["category"], "#9CA3AF"),
+                "velocity_pct": a["velocity_pct"],
+                "current_amount": format_currency(a["current_amount"]),
+                "avg_amount": format_currency(a["avg_amount"]),
+                "abs_deviation": format_currency(a["abs_deviation"]),
+                "direction": a["direction"],
+            })
+        return callouts
+    except Exception:
+        log.exception("Anomaly detection failed — skipping callouts")
+        return []
+
+
 def get_month_page_data(year: int, month: int) -> Dict[str, Any]:
     comparison = db_dashboard.get_month_comparison(year, month)
     categories = db_dashboard.get_category_totals_for_month(year, month)
@@ -250,6 +277,7 @@ def get_month_page_data(year: int, month: int) -> Dict[str, Any]:
             }
             for t in recent
         ],
+        "anomalies": _get_anomaly_callouts(year, month),
         **get_navigation_data(),
     }
 
