@@ -64,6 +64,11 @@
                               {% if '/transactions' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
                         Transactions
                     </a>
+                    <a href="/ask"
+                       class="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                              {% if '/ask' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+                        Ask
+                    </a>
                 </div>
 
                 <!-- Mobile hamburger -->
@@ -92,6 +97,11 @@
                class="block px-3 py-2 rounded-lg text-sm font-medium
                       {% if '/transactions' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600{% endif %}">
                 Transactions
+            </a>
+            <a href="/ask"
+               class="block px-3 py-2 rounded-lg text-sm font-medium
+                      {% if '/ask' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600{% endif %}">
+                Ask
             </a>
         </div>
     </nav>

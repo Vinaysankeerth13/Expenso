@@ -12,6 +12,7 @@ from app.services.dashboard_service import (
     get_year_page_data,
     get_month_page_data,
     get_transactions_page_data,
+    get_navigation_data,
 )
 
 router = APIRouter()
@@ -46,6 +47,11 @@ async def month_page(request: Request, year: int, month: int):
         return RedirectResponse(url=f"/year/{year}", status_code=302)
     data = get_month_page_data(year, month)
     return templates.TemplateResponse("month.html", _ctx(request, data))
+
+
+@router.get("/ask")
+async def ask_page(request: Request):
+    return templates.TemplateResponse("ask.html", _ctx(request, get_navigation_data()))
 
 
 @router.get("/transactions")

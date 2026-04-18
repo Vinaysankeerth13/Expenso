@@ -12,6 +12,7 @@ from app.services.dashboard_service import (
     get_category_options,
     update_category,
 )
+from app.services.nlq_service import ask as nlq_ask
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -32,6 +33,18 @@ async def filtered_transactions(
     return templates.TemplateResponse(
         "partials/transaction_rows.html",
         {"request": request, **data},
+    )
+
+
+@router.post("/ask")
+async def ask_question(
+    request: Request,
+    question: str = Form(...),
+):
+    result = nlq_ask(question)
+    return templates.TemplateResponse(
+        "partials/ask_response.html",
+        {"request": request, **result},
     )
 
 
