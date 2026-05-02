@@ -19,9 +19,14 @@ mkdir -p logs
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Running ingestion health check..." | tee -a "$LOG_FILE"
 
-# Query database for last email received date (load .env for DB creds)
-if [ -f "$(dirname "$0")/../.env" ]; then
-    export $(grep -v '^#' "$(dirname "$0")/../.env" | xargs)
+# Load .env for DB credentials — manually parse KEY=VALUE lines only,
+# skipping comments and bare values (e.g. email addresses) that break `source`.
+if [ -f ".env" ]; then
+    while IFS= read -r line; do
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "$line" ]] && continue
+        [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] && export "${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"
+    done < .env
 fi
 DB_NAME="${DB_NAME:-expenso}"
 DB_USER="${DB_USER:-postgres}"
@@ -53,6 +58,12 @@ if [ "$DAYS_SINCE" -ge "$ALERT_THRESHOLD_DAYS" ]; then
 
     # macOS notification
     osascript -e "display notification \"Last email: ${LAST_EMAIL_DATE} (${DAYS_SINCE} days ago)\" with title \"Expenso: No Recent Emails!\" sound name \"Glass\""
+
+    # Email alert
+    POETRY=/Users/srisan/.local/bin/poetry
+    PYTHON=$($POETRY env info --path 2>/dev/null)/bin/python
+    "$PYTHON" scripts/send_alert.py --days "$DAYS_SINCE" >> "$LOG_FILE" 2>&1 \
+        || echo "$(date '+%Y-%m-%d %H:%M:%S') - WARNING: Failed to send alert email" | tee -a "$LOG_FILE"
 
     # Log suggestions
     echo "" | tee -a "$LOG_FILE"

@@ -5,10 +5,11 @@
     <key>Label</key>
     <string>com.srisan.expenso.daily</string>
     <key>WorkingDirectory</key>
-    <string>/Users/srisan/Desktop/Projects/Expenso</string>
+    <string>/Users/srisan/Projects/Expenso</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/srisan/Desktop/Projects/Expenso/scripts/daily_job.sh</string>
+        <string>/bin/bash</string>
+        <string>/Users/srisan/Projects/Expenso/scripts/daily_job.sh</string>
     </array>
     <key>StartCalendarInterval</key>
     <dict>
@@ -18,8 +19,8 @@
         <integer>1</integer>
     </dict>
     <key>StandardOutPath</key>
-    <string>/Users/srisan/Desktop/Projects/Expenso/logs/launchd.log</string>
+    <string>/Users/srisan/Projects/Expenso/logs/launchd.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/srisan/Desktop/Projects/Expenso/logs/launchd.error.log</string>
+    <string>/Users/srisan/Projects/Expenso/logs/launchd.error.log</string>
 </dict>
 </plist>

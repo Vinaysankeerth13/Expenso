@@ -6,9 +6,18 @@
 
 cd "$(dirname "$0")/.." || exit
 
+# Resolve the poetry virtualenv python at runtime so that this script survives
+# venv recreation (e.g. after `poetry install` or python version changes).
+POETRY=/Users/srisan/.local/bin/poetry
+PYTHON=$($POETRY env info --path 2>/dev/null)/bin/python
+if [ ! -x "$PYTHON" ]; then
+    echo "$(date): ❌ FATAL: Cannot locate poetry virtualenv python. Run 'poetry install' in project root." >> logs/launchd.error.log
+    exit 1
+fi
+
 # Step 1: Ingest new emails from Gmail (can fail due to API issues)
 echo "$(date): Starting email ingestion..." >> logs/launchd.log
-if /Users/srisan/.local/bin/poetry run python app/ingest.py --mode incremental >> logs/launchd.log 2>> logs/launchd.error.log; then
+if "$PYTHON" app/ingest.py --mode incremental >> logs/launchd.log 2>> logs/launchd.error.log; then
     echo "$(date): ✅ Phase 1 (Ingestion) completed successfully" >> logs/launchd.log
 else
     INGEST_EXIT_CODE=$?
@@ -19,7 +28,7 @@ fi
 # Step 2: Extract transactions from newly ingested emails (can fail due to DB issues)
 # Runs regardless of Phase 1 status to process any backlog
 echo "$(date): Starting transaction extraction..." >> logs/launchd.log
-if /Users/srisan/.local/bin/poetry run python app/extract_transactions.py --unprocessed-only >> logs/launchd.log 2>> logs/launchd.error.log; then
+if "$PYTHON" app/extract_transactions.py --unprocessed-only >> logs/launchd.log 2>> logs/launchd.error.log; then
     echo "$(date): ✅ Phase 2 (Extraction) completed successfully" >> logs/launchd.log
 else
     EXTRACT_EXIT_CODE=$?
@@ -29,7 +38,7 @@ fi
 
 # Step 3: Classify new transactions
 echo "$(date): Starting transaction classification..." >> logs/launchd.log
-if /Users/srisan/.local/bin/poetry run python app/classify_transactions.py --unclassified-only >> logs/launchd.log 2>> logs/launchd.error.log; then
+if "$PYTHON" app/classify_transactions.py --unclassified-only >> logs/launchd.log 2>> logs/launchd.error.log; then
     echo "$(date): ✅ Phase 3 (Classification) completed successfully" >> logs/launchd.log
 else
     CLASSIFY_EXIT_CODE=$?
