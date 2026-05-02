@@ -118,6 +118,40 @@ _FEW_SHOTS = [
             "result_type": "scalar",
         }),
     },
+    {
+        "role": "user",
+        "content": "Which three categories grew the fastest over the last 3 months, and what merchant drove each?",
+    },
+    {
+        "role": "assistant",
+        "content": json.dumps({
+            "sql": (
+                "WITH prev AS ("
+                "SELECT category, SUM(amount) AS prev_total FROM transactions "
+                "WHERE direction='out' AND date >= CURRENT_DATE - INTERVAL '6 months' AND date < CURRENT_DATE - INTERVAL '3 months' "
+                "GROUP BY category"
+                "), curr AS ("
+                "SELECT category, SUM(amount) AS curr_total FROM transactions "
+                "WHERE direction='out' AND date >= CURRENT_DATE - INTERVAL '3 months' "
+                "GROUP BY category"
+                "), growth AS ("
+                "SELECT COALESCE(c.category, p.category) AS category, "
+                "COALESCE(curr_total,0) - COALESCE(prev_total,0) AS growth_amount "
+                "FROM curr c FULL OUTER JOIN prev p ON c.category = p.category "
+                "ORDER BY growth_amount DESC LIMIT 3"
+                "), top_merchants AS ("
+                "SELECT g.category, t.merchant, SUM(t.amount) AS spend "
+                "FROM growth g JOIN transactions t ON g.category = t.category "
+                "AND t.direction='out' AND t.date >= CURRENT_DATE - INTERVAL '3 months' "
+                "GROUP BY g.category, t.merchant"
+                ") "
+                "SELECT DISTINCT ON (tm.category) tm.category, tm.merchant, tm.spend AS merchant_spend "
+                "FROM top_merchants tm ORDER BY tm.category, tm.spend DESC"
+            ),
+            "explanation": "The three fastest-growing spend categories in the last 3 months vs the prior 3 months, with the top merchant driving each.",
+            "result_type": "table",
+        }),
+    },
 ]
 
 _SYSTEM = """You are a SQL assistant for a personal finance app backed by PostgreSQL.
@@ -134,7 +168,7 @@ Output format (strict JSON, no other text):
 }}
 
 Rules:
-  • Only SELECT statements — never INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, TRUNCATE
+  • Only SELECT statements (or WITH ... SELECT CTEs) — never INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, TRUNCATE
   • result_type="scalar" ONLY for pure aggregate questions: total spend, average, count, sum
     e.g. "how much did I spend on food?" → scalar
   • result_type="table" for any question asking WHICH transaction, WHICH merchant, WHICH month,
@@ -164,7 +198,7 @@ _BLOCKED = re.compile(
 def _validate_sql(sql: str) -> str:
     """Raise ValueError if SQL looks unsafe; return normalised SQL."""
     sql = sql.strip().rstrip(";")
-    if not sql.upper().startswith("SELECT"):
+    if not sql.upper().startswith(("SELECT", "WITH")):
         raise ValueError("Only SELECT queries are allowed.")
     if _BLOCKED.search(sql):
         raise ValueError("Query contains a disallowed keyword.")
@@ -253,7 +287,7 @@ def ask(question: str) -> Dict[str, Any]:
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model=ANTHROPIC_MODEL,
-            max_tokens=512,
+            max_tokens=2048,
             system=system,
             messages=messages,
         )

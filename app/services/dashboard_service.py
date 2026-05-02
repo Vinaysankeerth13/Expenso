@@ -315,9 +315,14 @@ def get_transactions_page_data(
                 "categoryColor": CATEGORY_COLORS.get(t.get('category', 'Other'), "#9CA3AF"),
                 "categorySlug": _slug(t.get('category', 'Other')),
                 "isIncome": t.get('direction') == 'in',
+                "needsReview": (
+                    t.get('classification_source') == 'llm'
+                    and (t.get('classification_confidence') or 1.0) < 0.9
+                ),
             }
             for t in result['transactions']
         ],
+        "needsReviewCount": db_dashboard.get_low_confidence_count(),
         "categoryOptions": get_category_options(),
         "filters": {
             "query": query or "",
@@ -380,4 +385,5 @@ def update_category(ref: int, new_category: str) -> Dict[str, Any]:
         "categoryColor": CATEGORY_COLORS.get(new_category, "#9CA3AF"),
         "categorySlug": _slug(new_category),
         "isIncome": row.get('direction') == 'in',
+        "needsReview": False,
     }

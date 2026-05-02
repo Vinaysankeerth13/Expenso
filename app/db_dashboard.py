@@ -285,7 +285,8 @@ def _fetch_rows(cur, where, params: list, offset: int, limit: int) -> List[Dict[
     """Fetches a paginated slice of transactions matching the WHERE clause."""
     cur.execute(
         sql.SQL("""
-            SELECT id, date, amount, currency, direction, merchant, category
+            SELECT id, date, amount, currency, direction, merchant, category,
+                   classification_confidence, classification_source
             FROM transactions
             WHERE {}
             ORDER BY date DESC, created_at DESC
@@ -294,6 +295,25 @@ def _fetch_rows(cur, where, params: list, offset: int, limit: int) -> List[Dict[
         params + [offset, limit],
     )
     return [dict(r) for r in cur.fetchall()]
+
+
+def get_low_confidence_count() -> int:
+    """Returns the count of LLM-classified transactions with confidence below 0.9."""
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT COUNT(*) FROM transactions
+                WHERE status = 'success'
+                  AND classification_source = 'llm'
+                  AND classification_confidence < 0.9
+            """)
+            return cur.fetchone()[0]
+    except Exception as e:
+        log.error(f"get_low_confidence_count failed: {e}")
+        return 0
+    finally:
+        conn.close()
 
 
 def search_transactions(

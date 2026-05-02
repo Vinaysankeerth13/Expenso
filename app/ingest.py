@@ -51,7 +51,7 @@ load_dotenv()
 # config / env
 CREDENTIALS_PATH: str = os.getenv("GMAIL_CREDENTIALS", "./credentials.json")
 TOKEN_PATH: str = os.getenv("TOKEN_PATH", "./token.json")
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"]
 SAMPLES_DIR = pathlib.Path("samples")
 RAW_DIR = SAMPLES_DIR / "raw"
 DAILY_DIR = SAMPLES_DIR / "daily"
