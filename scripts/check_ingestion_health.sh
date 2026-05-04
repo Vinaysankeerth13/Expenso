@@ -33,7 +33,8 @@ DB_USER="${DB_USER:-postgres}"
 DB_PASS="${DB_PASS:-postgres}"
 DB_HOST="${DB_HOST:-localhost}"
 
-LAST_EMAIL_DATE=$(PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT MAX(received_at)::date FROM raw_emails;" 2>/tmp/expenso_health_psql.err | xargs)
+PSQL=/Applications/Postgres.app/Contents/Versions/17/bin/psql
+LAST_EMAIL_DATE=$(PGPASSWORD="$DB_PASS" "$PSQL" -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT MAX(received_at)::date FROM raw_emails;" 2>/tmp/expenso_health_psql.err | xargs)
 
 if [ -z "$LAST_EMAIL_DATE" ]; then
     PSQL_ERR=$(cat /tmp/expenso_health_psql.err 2>/dev/null)
