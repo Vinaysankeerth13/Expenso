@@ -387,7 +387,7 @@ The SQL is validated (SELECT-only, no DDL/DML keywords), capped at 50 rows, exec
 | Duplicate emails | `ON CONFLICT (gmail_message_id) DO NOTHING` |
 | Duplicate transactions | Deterministic transaction ID + `ON CONFLICT` upsert |
 | API rate limits | Exponential backoff with jitter in `execute_with_retry()` |
-| Gmail auth expiry | Token auto-refreshed via `google.oauth2.credentials` |
+| Gmail auth expiry | Token auto-refreshed; invalid token (e.g. `invalid_grant`) is automatically cleared and prompts the user to re-authenticate manually |
 | Missed nightly runs | Incremental mode auto-catches up from last stored date |
 | Pipeline failure | Each phase is independent; Phase 1 failure doesn't block Phase 2 |
 | Staleness detection | Health check alerts via macOS notification if no emails for 3+ days |

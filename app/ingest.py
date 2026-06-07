@@ -77,7 +77,21 @@ def get_gmail_service(credentials_path: Optional[str] = None, token_path: Option
             creds = None
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except Exception as e:
+                log.error(f"Failed to refresh OAuth token: {e}")
+                if os.path.exists(token_path):
+                    try:
+                        os.remove(token_path)
+                        log.info(f"Removed invalid token file: {token_path}")
+                    except Exception as rm_err:
+                        log.error(f"Could not remove token file {token_path}: {rm_err}")
+                raise RuntimeError(
+                    "OAuth refresh token is invalid or expired (invalid_grant). "
+                    "The token file has been removed. Please run the ingestion script manually "
+                    "once to re-authenticate via browser: `poetry run python app/ingest.py --mode incremental`"
+                ) from e
         else:
             flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
             creds = flow.run_local_server(port=0)
