@@ -1,21 +1,24 @@
 """
-app/ingest_monthly.py
+app/ingest.py
 
-Fetch transaction-related emails from a given sender for a month-range
-and save raw messages + a JSON index in samples/raw/YYYY-MM/.
+Fetch transaction-related emails from a given sender for a date range
+and save raw messages + a JSON index in samples/raw/YYYY-MM/ (and to the
+raw_emails DB table).
 
 Usage examples:
   # run for Aug 2025 explicitly (one-off)
-  poetry run python app/ingest_monthly.py --year 2025 --month 8
+  poetry run python app/ingest.py --mode monthly --year 2025 --month 8
 
-  # run for previous month automatically (useful from cron)
-  poetry run python app/ingest_monthly.py --prev-month
+  # run for previous month automatically
+  poetry run python app/ingest.py --mode monthly --prev-month
+
+  # catch up on everything since the last email in the DB (used by the daily job)
+  poetry run python app/ingest.py --mode incremental
 
 Scheduling:
-  - Cron (recommended for production) example (run at 03:00 on the 1st of every month):
-      0 3 1 * * cd /Users/srisan/Projects/Expenso && poetry run python app/ingest_monthly.py --prev-month
-
-  - Or run as a long-running process using APScheduler (example included in this file).
+  Production scheduling is a launchd job (scripts/com.srisan.expenso.daily.plist)
+  that runs scripts/daily_job.sh nightly, which calls this script with
+  `--mode incremental` followed by extraction, classification, and a health check.
 """
 
 import os
@@ -23,8 +26,6 @@ import sys
 sys.path.append(os.getcwd())
 import json
 import base64
-import re
-import html
 import pathlib
 import argparse
 import logging
@@ -33,25 +34,17 @@ from datetime import datetime, date, timezone
 from dateutil.relativedelta import relativedelta
 
 from dotenv import load_dotenv
-from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
 from googleapiclient.errors import HttpError
 import socket
 import time
 import random
 
-# Optional: APScheduler for long-running scheduling
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
+from app import db_raw_emails
+from app.gmail_auth import get_gmail_service
 
 load_dotenv()
 
 # config / env
-CREDENTIALS_PATH: str = os.getenv("GMAIL_CREDENTIALS", "./credentials.json")
-TOKEN_PATH: str = os.getenv("TOKEN_PATH", "./token.json")
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"]
 SAMPLES_DIR = pathlib.Path("samples")
 RAW_DIR = SAMPLES_DIR / "raw"
 DAILY_DIR = SAMPLES_DIR / "daily"
@@ -63,43 +56,6 @@ HDFC_SENDERS = ["alerts@hdfcbank.bank.in", "alerts@hdfcbank.net"]
 
 
 log = logging.getLogger(__name__)
-
-
-def get_gmail_service(credentials_path: Optional[str] = None, token_path: Optional[str] = None):
-    """Authenticates with Gmail API using OAuth2 and returns the service object."""
-    credentials_path = credentials_path or CREDENTIALS_PATH
-    token_path = token_path or TOKEN_PATH
-    creds = None
-    if os.path.exists(token_path):
-        try:
-            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-        except Exception:
-            creds = None
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-            except Exception as e:
-                log.error(f"Failed to refresh OAuth token: {e}")
-                if os.path.exists(token_path):
-                    try:
-                        os.remove(token_path)
-                        log.info(f"Removed invalid token file: {token_path}")
-                    except Exception as rm_err:
-                        log.error(f"Could not remove token file {token_path}: {rm_err}")
-                raise RuntimeError(
-                    "OAuth refresh token is invalid or expired (invalid_grant). "
-                    "The token file has been removed. Please run the ingestion script manually "
-                    "once to re-authenticate via browser: `poetry run python app/ingest.py --mode incremental`"
-                ) from e
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
-            creds = flow.run_local_server(port=0)
-        # save in JSON format (google oauth helper uses .to_json)
-        with open(token_path, "w") as f:
-            f.write(creds.to_json())
-    service = build("gmail", "v1", credentials=creds)
-    return service
 
 
 def build_gmail_query(sender, start_date: date, end_date: date, extra_terms: Optional[List[str]] = None) -> str:
@@ -227,8 +183,6 @@ def fetch_messages_for_query(service, q: str, max_results: int = 500) -> List[Di
     log.info("Fetched %d messages for query: %s", len(messages), q)
     return messages
 
-
-from app import db_raw_emails
 
 def save_samples(messages: List[Dict], ym_folder: str, index_path: pathlib.Path):
     """Saves raw email JSONs to disk, creates a summary index, and inserts metadata into the DB."""
@@ -383,50 +337,5 @@ def cli():
         ingest_range(sender, start_date, end_date, keywords, args.max_results, mode="daily")
 
 
-# APScheduler helper
-def run_scheduler():
-    """Starts a background scheduler to run monthly and daily ingestion jobs automatically."""
-    sched = BackgroundScheduler()
-    
-    # Monthly job: 1st of every month at 03:00
-    def monthly_job():
-        try:
-            today = date.today()
-            first = date(today.year, today.month, 1) - relativedelta(months=1)
-            log.info(f"Running monthly job for {first.strftime('%Y-%m')}")
-            # call logic directly
-            start = first
-            end = (start + relativedelta(months=1)) - relativedelta(days=1)
-            ingest_range(HDFC_SENDERS, start, end, get_keywords(), 1000, "monthly")
-        except Exception as e:
-            log.exception(f"Monthly job failed: {e}")
-
-    # Daily job: 12:01 AM every day (fetching yesterday)
-    def daily_job():
-        try:
-            target = date.today() - relativedelta(days=1)
-            log.info(f"Running daily job for {target}")
-            ingest_range(HDFC_SENDERS, target, target, get_keywords(), 500, "daily")
-        except Exception as e:
-            log.exception(f"Daily job failed: {e}")
-
-    # Add jobs
-    sched.add_job(monthly_job, CronTrigger(day=1, hour=3, minute=0))
-    sched.add_job(daily_job, CronTrigger(hour=0, minute=1)) # 12:01 AM
-    
-    log.info("Scheduler started. Jobs: Monthly (1st @ 03:00), Daily (@ 00:01).")
-    sched.start()
-    try:
-        import time
-        while True:
-            time.sleep(60)
-    except (KeyboardInterrupt, SystemExit):
-        sched.shutdown()
-
-
 if __name__ == "__main__":
-    import sys
-    if "--scheduler" in sys.argv:
-        run_scheduler()
-    else:
-        cli()
+    cli()

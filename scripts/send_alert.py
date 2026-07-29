@@ -10,34 +10,14 @@ import argparse
 import base64
 import os
 import sys
+sys.path.append(os.getcwd())
 from email.message import EmailMessage
 
 from dotenv import load_dotenv
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
+
+from app.gmail_auth import get_gmail_service
 
 load_dotenv()
-
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"]
-CREDENTIALS_PATH = os.getenv("GMAIL_CREDENTIALS", "./credentials.json")
-TOKEN_PATH = os.getenv("TOKEN_PATH", "./token.json")
-
-
-def _get_service():
-    """Loads OAuth2 credentials and returns an authenticated Gmail service."""
-    creds = None
-    if os.path.exists(TOKEN_PATH):
-        creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            with open(TOKEN_PATH, "w") as f:
-                f.write(creds.to_json())
-        else:
-            print("ERROR: OAuth2 token missing or invalid. Run ingest.py once to re-authenticate.", file=sys.stderr)
-            sys.exit(1)
-    return build("gmail", "v1", credentials=creds)
 
 
 def send_alert(days_stale: int) -> None:
@@ -62,7 +42,11 @@ def send_alert(days_stale: int) -> None:
     )
 
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-    service = _get_service()
+    try:
+        service = get_gmail_service()
+    except RuntimeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
     service.users().messages().send(userId="me", body={"raw": raw}).execute()
     print(f"Alert email sent to {recipient}")
 
