@@ -255,3 +255,23 @@ def get_uncategorized_transactions(limit: int = 100) -> List[Dict[str, Any]]:
         return []
     finally:
         conn.close()
+
+
+def get_all_success_transactions(limit: int = 1000) -> List[Dict[str, Any]]:
+    """Returns all successful transactions regardless of category, for reclassification."""
+    conn = get_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """SELECT * FROM transactions
+                   WHERE status = 'success'
+                   ORDER BY date DESC
+                   LIMIT %s""",
+                (limit,),
+            )
+            return [dict(row) for row in cur.fetchall()]
+    except Exception as e:
+        log.error(f"Failed to fetch all success transactions: {e}")
+        return []
+    finally:
+        conn.close()

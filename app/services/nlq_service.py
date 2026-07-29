@@ -4,11 +4,13 @@ Translates a user question into SQL via Claude, validates, executes, and
 returns a structured result ready for the template layer.
 """
 
+import datetime
 import json
 import logging
 import os
 import re
 from datetime import date
+from decimal import Decimal
 from typing import Any, Dict, List
 
 import anthropic
@@ -16,6 +18,7 @@ from psycopg2.extras import RealDictCursor
 
 from app.config import ANTHROPIC_MODEL
 from app.db_connection import get_connection
+from app.services.formatting import format_currency
 
 log = logging.getLogger(__name__)
 
@@ -225,10 +228,6 @@ def _execute(sql: str) -> List[Dict[str, Any]]:
 # ── Row formatting ───────────────────────────────────────────────────────────
 
 def _format_row(row: Dict[str, Any]) -> List[str]:
-    from decimal import Decimal
-    import datetime
-    from app.services.dashboard_service import format_currency
-
     result = []
     for col, val in row.items():
         col_lower = col.lower()
@@ -338,8 +337,6 @@ def ask(question: str) -> Dict[str, Any]:
         return base
 
     # 4. Format results
-    from app.services.dashboard_service import format_currency
-
     if result_type == "scalar":
         first_row = rows_raw[0]
         val = list(first_row.values())[0]

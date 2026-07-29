@@ -4,12 +4,19 @@ Transforms raw DB results into clean, frontend-safe data structures.
 No DB column names, no SQL artifacts leak past this layer.
 """
 
+import re
+import logging
 from datetime import date, datetime
 from typing import Dict, Any, List, Optional
+
 from app import db_dashboard, db_transactions
-import logging
+from app.anomaly_detector import detect_anomalies
+from app.config import MERCHANT_PREFIX_PATTERN
+from app.services.formatting import format_currency
 
 log = logging.getLogger(__name__)
+
+_MERCHANT_PREFIXES = re.compile(MERCHANT_PREFIX_PATTERN, re.IGNORECASE)
 
 MONTH_NAMES = [
     "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -50,41 +57,6 @@ CATEGORY_ICONS = {
 }
 
 
-def format_currency(amount, show_sign=False) -> str:
-    """Format amount in Indian numbering system (1,23,456.00)."""
-    if amount is None:
-        return "0.00"
-    val = float(amount)
-    negative = val < 0
-    val = abs(val)
-
-    integer_part = int(val)
-    decimal_part = f"{val - integer_part:.2f}"[1:]  # .XX
-
-    s = str(integer_part)
-    if len(s) > 3:
-        last3 = s[-3:]
-        rest = s[:-3]
-        groups = []
-        while rest:
-            groups.insert(0, rest[-2:])
-            rest = rest[:-2]
-        result = ",".join(groups) + "," + last3
-    else:
-        result = s
-
-    formatted = result + decimal_part
-
-    if show_sign:
-        if negative:
-            return f"-₹{formatted}"
-        else:
-            return f"+₹{formatted}"
-    elif negative:
-        return f"-₹{formatted}"
-    return f"₹{formatted}"
-
-
 def _slug(text: str) -> str:
     """Convert category name to a CSS-safe slug."""
     return text.lower().replace(" & ", "-").replace(" ", "-")
@@ -101,9 +73,8 @@ def _clean_merchant(merchant: str) -> str:
     """Strip payment prefixes and UPI VPAs for display."""
     if not merchant:
         return "Unknown"
-    import re
     text = merchant.strip()
-    text = re.sub(r"^(PYU\*|CAS\*|RSP\*|RAZ\*|Razorpay\*)", "", text, flags=re.IGNORECASE)
+    text = _MERCHANT_PREFIXES.sub("", text)
     if "@" in text:
         parts = text.split(None, 1)
         if len(parts) == 2:
@@ -196,7 +167,6 @@ def _get_anomaly_callouts(year: int, month: int) -> List[Dict[str, Any]]:
     if (year, month) != (today.year, today.month):
         return []
     try:
-        from app.anomaly_detector import detect_anomalies
         result = detect_anomalies(lookback_months=3, threshold_pct=50.0, min_abs_deviation=500.0)
         callouts = []
         for a in result.get("anomalies", []):

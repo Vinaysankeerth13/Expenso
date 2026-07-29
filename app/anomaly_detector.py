@@ -14,12 +14,12 @@ import json
 import logging
 from collections import defaultdict
 from datetime import date
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 from app import db_anomaly
-from app.services.dashboard_service import format_currency
+from app.services.formatting import format_currency
 
-log = logging.getLogger("anomaly_detector")
+log = logging.getLogger(__name__)
 
 
 def detect_anomalies(

@@ -30,13 +30,13 @@ import re
 import json
 import argparse
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 
 load_dotenv()
 
 from app import db_transactions
-from app.config import ANTHROPIC_MODEL, CATEGORIES
+from app.config import ANTHROPIC_MODEL, CATEGORIES, MERCHANT_PREFIX_PATTERN
 from app.db_merchant_categories import (
     lookup_merchant_category,
     insert_merchant_category,
@@ -46,9 +46,7 @@ from app.db_merchant_categories import (
 log = logging.getLogger(__name__)
 
 # Known prefixes added by payment gateways
-MERCHANT_PREFIXES = re.compile(
-    r"^(PYU\*|CAS\*|RSP\*|RAZ\*|Razorpay\*)", re.IGNORECASE
-)
+MERCHANT_PREFIXES = re.compile(MERCHANT_PREFIX_PATTERN, re.IGNORECASE)
 
 # UPI VPA domain suffixes (everything after @)
 UPI_VPA_PATTERN = re.compile(r"^[^\s]+@\S+")
@@ -283,7 +281,7 @@ def batch_classify(limit: int = 1000, reclassify_all: bool = False,
 
     if reclassify_all:
         log.info("Reclassifying all transactions...")
-        transactions = _get_all_success_transactions(limit)
+        transactions = db_transactions.get_all_success_transactions(limit)
     else:
         log.info("Classifying uncategorized transactions...")
         transactions = db_transactions.get_uncategorized_transactions(limit)
@@ -325,29 +323,6 @@ def batch_classify(limit: int = 1000, reclassify_all: bool = False,
             stats["failed"] += 1
 
     return stats
-
-
-def _get_all_success_transactions(limit: int) -> List[Dict[str, Any]]:
-    """Fetch all successful transactions (for reclassification)."""
-    from app.db_merchant_categories import get_connection
-    from psycopg2.extras import RealDictCursor
-
-    conn = get_connection()
-    try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                """SELECT * FROM transactions
-                   WHERE status = 'success'
-                   ORDER BY date DESC
-                   LIMIT %s""",
-                (limit,),
-            )
-            return [dict(row) for row in cur.fetchall()]
-    except Exception as e:
-        log.error(f"Failed to fetch transactions: {e}")
-        return []
-    finally:
-        conn.close()
 
 
 def print_classification_stats():

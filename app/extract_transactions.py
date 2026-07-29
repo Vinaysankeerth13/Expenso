@@ -24,14 +24,12 @@ sys.path.append(os.getcwd())
 
 import argparse
 import logging
-from typing import List, Dict, Any
-from datetime import datetime, date
-from dateutil import parser as date_parser
+from typing import List, Dict
 
 from app import db_transactions
 from app.transaction_event import extract_transaction, generate_transaction_id
 
-log = logging.getLogger("extract_transactions")
+log = logging.getLogger(__name__)
 
 
 def extract_and_insert_transactions(emails: List[Dict], filter_success_only: bool = True) -> Dict[str, int]:
@@ -138,17 +136,19 @@ def extract_unprocessed():
     print_stats(stats)
 
 
-def extract_all(limit: int = None):
-    """Extract transactions from all emails (re-process everything)."""
+def extract_all():
+    """
+    NOTE: despite the name, this does NOT re-extract already-processed emails.
+    insert_transactions()'s ON CONFLICT clause overwrites `category` with
+    whatever extract_transaction() produces, which is always None (categorization
+    happens later in classify_transactions.py) — re-running extraction over
+    already-classified emails would silently wipe out existing categories,
+    including manual corrections. Until that UPSERT is made category-safe,
+    --all is intentionally just an alias for --unprocessed-only.
+    """
     log.info("Fetching all emails from database...")
-
-    # Use get_unprocessed_email_ids with a modified query or fetch all
-    # For now, we'll just process unprocessed ones
-    # To truly process ALL, we'd need a new query in db_transactions.py
-    # For MVP, let's just warn the user
-
-    log.warning("--all flag: Currently only processes unprocessed emails.")
-    log.warning("To re-process ALL emails, truncate transactions table first:")
+    log.warning("--all is currently equivalent to --unprocessed-only (see docstring).")
+    log.warning("To force full re-extraction, truncate transactions table first:")
     log.warning("  psql -U postgres -d expenso -c 'TRUNCATE transactions;'")
 
     extract_unprocessed()

@@ -6,13 +6,19 @@ from tabulate import tabulate
 import sys
 import os
 sys.path.append(os.getcwd())
-from app.ingest import get_gmail_service, fetch_messages_for_query, build_gmail_query, extract_body_from_message
+from app.ingest import (
+    get_gmail_service,
+    fetch_messages_for_query,
+    build_gmail_query,
+    extract_body_from_message,
+    HDFC_SENDERS,
+)
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-log = logging.getLogger("check_coverage")
+log = logging.getLogger(__name__)
 
-def check_coverage(year=2025, month=8, sender="alerts@hdfcbank.net"):
+def check_coverage(year=2025, month=8, sender=HDFC_SENDERS):
     """Fetches all emails for a month and reports how many are matched by current keywords vs. missed."""
     # 1. Get Keywords
     # We duplicate them here or import them? Importing is better to stay in sync.

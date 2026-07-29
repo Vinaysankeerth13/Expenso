@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 
 # Setup logging
-log = logging.getLogger("transaction_event")
+log = logging.getLogger(__name__)
 
 def parse_amount(text: str) -> Optional[float]:
     """Extracts the first monetary amount (Rs. or INR) from the text."""
@@ -155,13 +155,6 @@ def extract_transaction(email: Dict) -> Dict[str, Any]:
         if m_merch:
             merchant = m_merch.group(1).strip()
             
-    # Normalize
-    if not amount:
-        # maybe parse from body if really needed, but user said use snippet fallback body
-        # For now, strict snippet only as requested "text_source: snippet"
-        # If we failed on snippet, could verify raw_body
-        pass
-
     return {
         "raw_email_id": email.get("id"),
         "source": source,
