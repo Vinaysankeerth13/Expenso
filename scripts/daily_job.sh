@@ -54,4 +54,13 @@ else
     echo "$(date): ⚠️ Health check alert triggered (see logs/health_check.log)" >> logs/launchd.log
 fi
 
+# Step 5: Parsing quality check (alert if merchant/category extraction is degrading,
+# e.g. a bank changed an email template — see logs/parsing_health.log)
+echo "$(date): Running parsing quality check..." >> logs/launchd.log
+if "$PYTHON" scripts/check_parsing_health.py >> logs/launchd.log 2>> logs/launchd.error.log; then
+    echo "$(date): ✅ Parsing quality check passed" >> logs/launchd.log
+else
+    echo "$(date): ⚠️ Parsing quality alert triggered (see logs/parsing_health.log)" >> logs/launchd.log
+fi
+
 echo "$(date): Daily job finished. Check logs for any warnings." >> logs/launchd.log

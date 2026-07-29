@@ -7,30 +7,21 @@ Usage:
 """
 
 import argparse
-import base64
 import os
 import sys
 sys.path.append(os.getcwd())
-from email.message import EmailMessage
 
 from dotenv import load_dotenv
 
-from app.gmail_auth import get_gmail_service
+from app.gmail_auth import send_email
 
 load_dotenv()
 
 
 def send_alert(days_stale: int) -> None:
     """Composes and sends a staleness alert email via the Gmail API."""
-    recipient = os.getenv("ALERT_EMAIL_TO")
-    if not recipient:
-        print("ERROR: ALERT_EMAIL_TO must be set in .env", file=sys.stderr)
-        sys.exit(1)
-
-    msg = EmailMessage()
-    msg["Subject"] = f"Expenso Alert: No emails ingested for {days_stale} days"
-    msg["To"] = recipient
-    msg.set_content(
+    subject = f"Expenso Alert: No emails ingested for {days_stale} days"
+    body = (
         f"Hey,\n\n"
         f"The Expenso ingestion pipeline hasn't picked up any new emails in {days_stale} days. "
         f"Please check the ingestion pipeline — something seems to have broken.\n\n"
@@ -40,15 +31,12 @@ def send_alert(days_stale: int) -> None:
         f"  3. Emails may be going to spam or the Promotions tab\n\n"
         f"— Expenso"
     )
-
-    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
     try:
-        service = get_gmail_service()
+        send_email(subject, body)
     except RuntimeError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
-    service.users().messages().send(userId="me", body={"raw": raw}).execute()
-    print(f"Alert email sent to {recipient}")
+    print(f"Alert email sent to {os.getenv('ALERT_EMAIL_TO')}")
 
 
 if __name__ == "__main__":
