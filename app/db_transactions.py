@@ -166,6 +166,41 @@ def get_transaction_stats() -> Dict[str, Any]:
         conn.close()
 
 
+def update_transaction_merchant(
+    row_id: int,
+    merchant: str,
+    reference_id: Optional[str] = None,
+) -> bool:
+    """Updates the merchant/reference_id of a transaction by its integer primary key.
+
+    Used for targeted backfills (e.g. re-parsing emails after a bank template
+    change) — updates only these two fields on an existing row rather than
+    regenerating transaction_id, so it can't create a duplicate row.
+    """
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE transactions
+                   SET merchant = %s,
+                       reference_id = COALESCE(%s, reference_id),
+                       updated_at = NOW()
+                   WHERE id = %s""",
+                (merchant, reference_id, row_id),
+            )
+            conn.commit()
+            updated = cur.rowcount > 0
+            if not updated:
+                log.warning(f"Transaction id={row_id} not found")
+            return updated
+    except Exception as e:
+        log.error(f"Failed to update merchant for id={row_id}: {e}")
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
+
 def update_transaction_category(
     transaction_id: str,
     category: str,
@@ -252,6 +287,32 @@ def get_uncategorized_transactions(limit: int = 100) -> List[Dict[str, Any]]:
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
         log.error(f"Failed to fetch uncategorized transactions: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def get_transactions_with_blank_merchant(source: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Returns successful transactions with no merchant captured, optionally filtered by source.
+
+    Used to find transactions affected by a parser regression (e.g. a bank
+    template change breaking merchant extraction) so they can be backfilled.
+    """
+    conn = get_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            query = """SELECT * FROM transactions
+                       WHERE status = 'success'
+                         AND (merchant IS NULL OR merchant = '')"""
+            params: list = []
+            if source:
+                query += " AND source = %s"
+                params.append(source)
+            query += " ORDER BY date ASC"
+            cur.execute(query, params)
+            return [dict(row) for row in cur.fetchall()]
+    except Exception as e:
+        log.error(f"Failed to fetch transactions with blank merchant: {e}")
         return []
     finally:
         conn.close()

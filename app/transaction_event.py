@@ -126,24 +126,32 @@ def extract_transaction(email: Dict) -> Dict[str, Any]:
         status = "failed"
         
     # --- Extraction Specifics ---
-    
+
     # 1. UPI Extraction
     if source == "hdfc_upi":
-        # pattern: "debited ... to VPA (.*?) on"
-        # pattern: "debited ... to (.*?) on"
+        # HDFC has used at least two wordings for this line:
+        #   old (through ~May 2026): "debited ... to VPA <addr> <Name> on <date>"
+        #   new (from ~May 2026):    "debited ... towards VPA <addr> (<Name>) on <date>"
+        # Try the new parenthesized form first since it disambiguates the VPA
+        # address from the business name; fall back to the older bare forms.
         if direction == "out":
-            m_vpa = re.search(r"to VPA\s+(.*?)\s+on\s+\d", snippet, re.IGNORECASE)
-            if m_vpa:
-                merchant = m_vpa.group(1).strip()
+            m_vpa_paren = re.search(r"(?:to|towards)\s+VPA\s+(\S+)\s+\(([^)]+)\)\s+on\s+\d", snippet, re.IGNORECASE)
+            if m_vpa_paren:
+                merchant = f"{m_vpa_paren.group(1).strip()} {m_vpa_paren.group(2).strip()}"
             else:
-                # Fallback: "to (.*?) on"
-                m_gen = re.search(r"\sto\s+(.*?)\s+on\s+\d", snippet, re.IGNORECASE)
-                if m_gen:
-                    merchant = m_gen.group(1).strip()
+                m_vpa = re.search(r"to VPA\s+(.*?)\s+on\s+\d", snippet, re.IGNORECASE)
+                if m_vpa:
+                    merchant = m_vpa.group(1).strip()
+                else:
+                    # Fallback: "to/towards (.*?) on"
+                    m_gen = re.search(r"\s(?:to|towards)\s+(.*?)\s+on\s+\d", snippet, re.IGNORECASE)
+                    if m_gen:
+                        merchant = m_gen.group(1).strip()
 
-        # Reference number
-        # "UPI transaction reference number is 114833820377"
-        m_ref = re.search(r"reference number is\s+(\d+)", snippet, re.IGNORECASE)
+        # Reference number — wording also changed alongside the VPA line:
+        #   old: "Your UPI transaction reference number is 114833820377"
+        #   new: "UPI transaction reference no.: 122727265111"
+        m_ref = re.search(r"reference (?:number is|no\.?:?)\s*(\d+)", snippet, re.IGNORECASE)
         if m_ref:
             ref_id = m_ref.group(1)
             signals.append("upi_ref_present")
