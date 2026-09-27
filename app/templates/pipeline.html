@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Expenso — Data status{% endblock %}
+{% block content %}
+<header class="page-head">
+    <div>
+        <p class="eyebrow">Data status</p>
+        <h1 class="page-title">Pipeline is <span class="status-word status-{{ status }}">{{ status }}</span></h1>
+        {% if coverage %}
+        <p class="page-sub">Configured bank alerts searched from {{ coverage.coverage_start.strftime('%-d %b %Y') if coverage.coverage_start.strftime is defined else coverage.coverage_start }}
+            through {{ coverage.covered_through.strftime('%-d %b %Y') if coverage.covered_through.strftime is defined else coverage.covered_through }}.
+            This records completed mailbox searches, not proof that all accounts or financial activity are represented.</p>
+        {% else %}
+        <p class="page-sub">No completed search coverage is recorded yet.</p>
+        {% endif %}
+    </div>
+</header>
+
+{% if reasons %}
+<ul class="reasons">{% for reason in reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
+{% endif %}
+
+{% if counts %}
+<section class="section">
+    <dl class="stat-grid">
+        {% for key, label in [('extraction_backlog', 'Messages waiting for extraction'), ('classification_backlog', 'Transactions waiting for classification'), ('review_backlog', 'Messages needing review'), ('failed_messages', 'Retryable processing failures'), ('recent_candidates', 'Candidate messages, last 7 days'), ('recent_accepted', 'Accepted notifications, last 7 days')] %}
+        <div><dt>{{ label }}</dt><dd class="num">{{ counts[key] }}</dd></div>
+        {% endfor %}
+    </dl>
+</section>
+{% endif %}
+
+{% if activity == 'no_recent_candidates' or quality_evidence == 'insufficient_sample' %}
+<div class="data-note" style="flex-direction: column; gap: 4px;">
+    {% if activity == 'no_recent_candidates' %}<p>No recent candidate messages. An empty mailbox search can be healthy when all stages complete.</p>{% endif %}
+    {% if quality_evidence == 'insufficient_sample' %}<p>Too few recent accepted notifications to judge parsing quality.</p>{% endif %}
+</div>
+{% endif %}
+
+{% if stages %}
+<section class="section">
+    <div class="section-head"><h2 class="section-title">Pipeline stages</h2></div>
+    {% for stage, run in stages.items() %}
+    {% set last = last_success.get(stage) %}
+    <div class="stage-row">
+        <span class="stage">{{ stage | capitalize }}</span>
+        <span class="status-{{ 'healthy' if run.status == 'success' else ('failed' if run.status == 'failed' else 'incomplete') }}">{{ run.status }}</span>
+        <span class="when num">Last successful run: {% if last and last.strftime is defined %}{{ last.strftime('%-d %b, %H:%M') }}{% else %}{{ last or 'not recorded' }}{% endif %}</span>
+    </div>
+    {% endfor %}
+</section>
+{% endif %}
+
+<p class="section"><a href="/review" class="text-link">Review uncertain messages &rarr;</a></p>
+{% endblock %}

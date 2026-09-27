@@ -1,0 +1,10 @@
+{% if item %}
+{% include "partials/review_item.html" %}
+{% else %}
+<article class="review-item is-resolved" id="review-{{ raw_email_id }}">
+    <p class="review-notice">{{ notice }}</p>
+    {% if show_transactions_link %}<a href="/transactions" class="text-link">View in Transactions &rarr;</a>{% endif %}
+    <p class="ref">Message reference: {{ raw_email_id }}</p>
+</article>
+{% endif %}
+{% include "partials/review_count.html" %}

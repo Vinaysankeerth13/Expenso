@@ -1,0 +1,18 @@
+<article class="review-item" id="review-{{ item.raw_email_id }}">
+    <div class="review-head">
+        <h2>{{ item.candidate.merchant or 'Unrecognized transaction' }}</h2>
+        <button type="button" class="link-button"
+                hx-post="/htmx/retry-review"
+                hx-vals='{"raw_email_id": {{ item.raw_email_id | tojson }}}'
+                hx-target="#review-{{ item.raw_email_id }}"
+                hx-swap="outerHTML"
+                hx-disabled-elt="this">Retry with current parser</button>
+    </div>
+    <p class="meta num">{{ item.candidate.date or 'Unknown date' }} &middot;
+        {{ item.candidate.currency or 'Unknown currency' }} {{ item.candidate.amount or 'Unknown amount' }}</p>
+    <ul>
+        {% for reason in item.reasons %}<li>{{ reason }}</li>{% endfor %}
+    </ul>
+    {% if notice %}<p class="review-notice">{{ notice }}</p>{% endif %}
+    <p class="ref">Message reference: {{ item.raw_email_id }}</p>
+</article>

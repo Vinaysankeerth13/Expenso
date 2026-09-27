@@ -1,0 +1,9 @@
+<div id="edit-notice" class="edit-notice" role="status" hx-swap-oob="true">
+    <span><strong class="num">{{ txn.batchCount + 1 }} payments to {{ txn.merchant }}</strong> are now {{ txn.category }}. Future payments will follow.</span>
+    <button type="button" class="link-button"
+            hx-post="/htmx/undo-category"
+            hx-vals='{"edit_id": {{ txn.editId }}, "from_notice": "true"}'
+            hx-target="#edit-notice"
+            hx-swap="outerHTML"
+            hx-disabled-elt="this">Undo</button>
+</div>

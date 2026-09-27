@@ -1,0 +1,16 @@
+<div class="stat-row" id="txn-stats" {% if statsOob %}hx-swap-oob="true"{% endif %}>
+    <div class="stat">
+        <p class="stat-label">Captured outflow</p>
+        <p class="stat-value num">{{ summary.totalSpent }}</p>
+    </div>
+    <div class="stat divided">
+        <p class="stat-label">{{ "Transactions" if filters.needsReview else "All movements" }}</p>
+        <p class="stat-value num">{{ summary.count }}</p>
+    </div>
+    <div class="stat divided">
+        <p class="stat-label">Average outgoing payment</p>
+        <p class="stat-value num">{{ summary.average }}</p>
+    </div>
+    {% if filters.needsReview %}<div class="hidden">{% include "partials/classification_review_count.html" %}</div>
+    {% else %}{% include "partials/classification_review_count.html" %}{% endif %}
+</div>

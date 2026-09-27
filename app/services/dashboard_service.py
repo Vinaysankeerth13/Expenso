@@ -6,12 +6,15 @@ No DB column names, no SQL artifacts leak past this layer.
 
 import re
 import logging
+from collections import Counter
 from datetime import date, datetime
 from typing import Dict, Any, List, Optional
 
 from app import db_dashboard, db_transactions
 from app.anomaly_detector import detect_anomalies
 from app.config import MERCHANT_PREFIX_PATTERN
+from app.reporting_periods import read_evidence, calendar_values, coverage_label
+from app.db_pipeline import pipeline_today
 from app.services.formatting import format_currency
 
 log = logging.getLogger(__name__)
@@ -31,17 +34,19 @@ MONTH_FULL_NAMES = [
 WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 CATEGORY_COLORS = {
-    "Food & Dining": "#DC2626",
-    "Groceries": "#EA580C",
-    "Entertainment": "#D97706",
-    "Subscriptions": "#7C3AED",
-    "Shopping": "#2563EB",
-    "Transport & Fuel": "#0891B2",
-    "Health & Personal": "#059669",
-    "Transfers": "#6B7280",
-    "Income": "#16A34A",
-    "Other": "#9CA3AF",
+    "Food & Dining": "#C97A3D",
+    "Groceries": "#9E8A2E",
+    "Entertainment": "#A34D74",
+    "Subscriptions": "#7A5C9E",
+    "Shopping": "#3D5C99",
+    "Transport & Fuel": "#5C8A99",
+    "Health & Personal": "#4C7A3F",
+    "Transfers": "#6B6B6B",
+    "Income": "#2E6B4A",
+    "Other": "#8A6B4D",
 }
+# Not an assignable category, so it stays out of CATEGORY_COLORS (which feeds the edit menu).
+UNCLASSIFIED_COLOR = "#BDB6A8"
 
 CATEGORY_ICONS = {
     "Food & Dining": "utensils",
@@ -55,6 +60,11 @@ CATEGORY_ICONS = {
     "Income": "trending-up",
     "Other": "circle",
 }
+
+
+def _category_name(category: Optional[str]) -> str:
+    """Keep pending classification distinct from the assigned Other category."""
+    return category or "Unclassified"
 
 
 def _slug(text: str) -> str:
@@ -97,14 +107,18 @@ def get_navigation_data() -> Dict[str, Any]:
 
 def get_year_page_data(year: int) -> Dict[str, Any]:
     summary = db_dashboard.get_year_summary(year)
-    monthly = db_dashboard.get_monthly_totals(year)
     categories = db_dashboard.get_category_totals_for_year(year)
 
-    total_spent = float(summary.get('total_spent', 0))
+    evidence = read_evidence(date(year,1,1), min(date(year,12,31),pipeline_today()))
+    monthly_values = calendar_values(evidence,year)
+    incoming_values = calendar_values(evidence,year,direction="in")
+    monthly = [{'month':m, 'total_out':monthly_values[m-1], 'total_in':incoming_values[m-1]}
+               for m in range(1,13)]
     cat_total = sum(float(c['total']) for c in categories) or 1
 
     return {
         "year": year,
+        "coverageLabel": coverage_label(evidence),
         "summary": {
             "totalSpent": format_currency(summary.get('total_spent', 0)),
             "income": format_currency(summary.get('total_income', 0)),
@@ -113,17 +127,17 @@ def get_year_page_data(year: int) -> Dict[str, Any]:
         },
         "monthlyTrend": {
             "labels": [MONTH_NAMES[m['month']] for m in monthly],
-            "spent": [float(m['total_out']) for m in monthly],
-            "income": [float(m['total_in']) for m in monthly],
+            "spent": [float(m['total_out']) if m['total_out'] is not None else None for m in monthly],
+            "income": [float(m['total_in']) if m['total_in'] is not None else None for m in monthly],
         },
         "categories": [
             {
-                "name": c['category'],
+                "name": _category_name(c['category']),
                 "amount": format_currency(c['total']),
                 "rawAmount": float(c['total']),
                 "count": c['count'],
-                "color": CATEGORY_COLORS.get(c['category'], "#9CA3AF"),
-                "slug": _slug(c['category']),
+                "color": CATEGORY_COLORS.get(c['category'], UNCLASSIFIED_COLOR),
+                "slug": _slug(_category_name(c['category'])),
                 "percentage": round(float(c['total']) / cat_total * 100, 1),
             }
             for c in categories
@@ -135,11 +149,11 @@ def get_year_page_data(year: int) -> Dict[str, Any]:
 
 def _build_spend_map(monthly_data: list) -> Dict[str, Any]:
     """Build a treemap-style spend map: one block per month, sized + colored by spend."""
-    max_spend = max((float(m['total_out']) for m in monthly_data), default=0) or 1
+    max_spend = max((float(m['total_out'] or 0) for m in monthly_data), default=0) or 1
 
     blocks = []
     for m in monthly_data:
-        spent = float(m['total_out'])
+        spent = float(m['total_out'] or 0)
         ratio = spent / max_spend
         # Color level 0-4 based on relative spend
         if spent == 0:
@@ -154,7 +168,7 @@ def _build_spend_map(monthly_data: list) -> Dict[str, Any]:
             level = 4
         blocks.append({
             "month": MONTH_NAMES[m['month']],
-            "amount": format_currency(spent),
+            "amount": format_currency(spent) if m['total_out'] is not None else "Unknown",
             "ratio": round(ratio, 3),
             "level": level,
         })
@@ -171,8 +185,8 @@ def _get_anomaly_callouts(year: int, month: int) -> List[Dict[str, Any]]:
         callouts = []
         for a in result.get("anomalies", []):
             callouts.append({
-                "category": a["category"],
-                "color": CATEGORY_COLORS.get(a["category"], "#9CA3AF"),
+                "category": _category_name(a["category"]),
+                "color": CATEGORY_COLORS.get(a["category"], UNCLASSIFIED_COLOR),
                 "velocity_pct": a["velocity_pct"],
                 "current_amount": format_currency(a["current_amount"]),
                 "avg_amount": format_currency(a["avg_amount"]),
@@ -188,7 +202,6 @@ def _get_anomaly_callouts(year: int, month: int) -> List[Dict[str, Any]]:
 def get_month_page_data(year: int, month: int) -> Dict[str, Any]:
     comparison = db_dashboard.get_month_comparison(year, month)
     categories = db_dashboard.get_category_totals_for_month(year, month)
-    daily = db_dashboard.get_daily_totals_for_month(year, month)
     recent = db_dashboard.get_recent_transactions(year, month, limit=10)
 
     total_spent = comparison['current_total']
@@ -209,27 +222,30 @@ def get_month_page_data(year: int, month: int) -> Dict[str, Any]:
         "year": year,
         "month": month,
         "monthName": MONTH_FULL_NAMES[month],
+        "coverageLabel": comparison["coverage_label"],
         "prevMonth": {"year": prev_year, "month": prev_month},
         "nextMonth": {"year": next_year, "month": next_month},
         "summary": {
             "totalSpent": format_currency(total_spent),
-            "change": round(comparison['pct_change'], 1),
-            "changePositive": comparison['pct_change'] >= 0,
-            "topCategory": top_cat['category'] if top_cat else "N/A",
+            "change": round(comparison['pct_change'], 1) if comparison['pct_change'] is not None else None,
+            "comparisonLabel": comparison["period_label"],
+            "comparisonMessage": comparison["message"],
+            "changePositive": comparison['pct_change'] is not None and comparison['pct_change'] > 0,
+            "topCategory": _category_name(top_cat['category']) if top_cat else "N/A",
             "topCategoryShare": round(float(top_cat['total']) / cat_total * 100) if top_cat else 0,
-            "topCategoryColor": CATEGORY_COLORS.get(top_cat['category'], "#9CA3AF") if top_cat else "#9CA3AF",
+            "topCategoryColor": CATEGORY_COLORS.get(top_cat['category'], UNCLASSIFIED_COLOR) if top_cat else UNCLASSIFIED_COLOR,
         },
         "dailyTrend": {
-            "labels": [str(d['day'].day) for d in daily],
-            "amounts": [float(d['total']) for d in daily],
+            "labels": [str(day) for day in range(1,len(comparison["daily_values"])+1)],
+            "amounts": comparison["daily_values"],
         },
         "categories": [
             {
-                "name": c['category'],
+                "name": _category_name(c['category']),
                 "amount": format_currency(c['total']),
                 "rawAmount": float(c['total']),
-                "color": CATEGORY_COLORS.get(c['category'], "#9CA3AF"),
-                "slug": _slug(c['category']),
+                "color": CATEGORY_COLORS.get(c['category'], UNCLASSIFIED_COLOR),
+                "slug": _slug(_category_name(c['category'])),
                 "percentage": round(float(c['total']) / cat_total * 100, 1),
             }
             for c in categories
@@ -240,14 +256,15 @@ def get_month_page_data(year: int, month: int) -> Dict[str, Any]:
                 "amount": format_currency(t.get('amount'), show_sign=True) if t.get('direction') == 'in'
                           else f"-{format_currency(t.get('amount'))}",
                 "date": _format_date(t.get('date')),
-                "category": t.get('category', 'Other'),
-                "categoryColor": CATEGORY_COLORS.get(t.get('category', 'Other'), "#9CA3AF"),
-                "categorySlug": _slug(t.get('category', 'Other')),
+                "category": _category_name(t.get('category')),
+                "categoryColor": CATEGORY_COLORS.get(_category_name(t.get('category')), UNCLASSIFIED_COLOR),
+                "categorySlug": _slug(_category_name(t.get('category'))),
                 "isIncome": t.get('direction') == 'in',
             }
             for t in recent
         ],
         "anomalies": _get_anomaly_callouts(year, month),
+        "needsReviewCount": db_dashboard.get_low_confidence_count(),
         **get_navigation_data(),
     }
 
@@ -259,14 +276,29 @@ def get_transactions_page_data(
     month: Optional[int] = None,
     page: int = 1,
     per_page: int = 20,
+    needs_review: bool = False,
 ) -> Dict[str, Any]:
-    offset = (page - 1) * per_page
-    result = db_dashboard.search_transactions(
-        query=query, category=category, year=year, month=month,
-        offset=offset, limit=per_page,
-    )
+    from app.db_classification import other_payment_counts
 
+    def search(page):
+        # The review list is sorted by merchant in Python, so it loads every match.
+        return db_dashboard.search_transactions(
+            query=query, category=category, year=year, month=month,
+            offset=0 if needs_review else (page - 1) * per_page,
+            limit=None if needs_review else per_page,
+            needs_review=needs_review,
+        )
+
+    result = search(page)
     total_pages = (result['total_count'] + per_page - 1) // per_page if result['total_count'] > 0 else 1
+    # Fixing reviewed rows can empty the last page of the review list.
+    if page > total_pages:
+        page = total_pages
+        if not needs_review:
+            result = search(page)
+    rows = result['transactions']
+    if needs_review:
+        rows = _by_merchant_frequency(rows)[(page - 1) * per_page : page * per_page]
 
     return {
         "summary": {
@@ -276,27 +308,19 @@ def get_transactions_page_data(
         },
         "transactions": [
             {
-                "ref": t.get('id'),
-                "merchant": _clean_merchant(t.get('merchant')),
-                "amount": format_currency(t.get('amount'), show_sign=True) if t.get('direction') == 'in'
-                          else f"-{format_currency(t.get('amount'))}",
-                "date": _format_date(t.get('date')),
-                "category": t.get('category', 'Other'),
-                "categoryColor": CATEGORY_COLORS.get(t.get('category', 'Other'), "#9CA3AF"),
-                "categorySlug": _slug(t.get('category', 'Other')),
-                "isIncome": t.get('direction') == 'in',
-                "needsReview": (
-                    t.get('classification_source') == 'llm'
-                    and (t.get('classification_confidence') or 1.0) < 0.9
-                ),
+                **_transaction_row(t, similar),
+                "groupSize": t.get("group_size", 0),
+                "groupStart": needs_review and t.get("group_size", 0) > 1
+                and (i == 0 or rows[i - 1].get("group_key") != t.get("group_key")),
             }
-            for t in result['transactions']
+            for i, (t, similar) in enumerate(zip(rows, other_payment_counts(rows)))
         ],
         "needsReviewCount": db_dashboard.get_low_confidence_count(),
         "categoryOptions": get_category_options(),
         "filters": {
             "query": query or "",
             "category": category or "",
+            "needsReview": needs_review,
             "categories": db_dashboard.get_all_category_names(),
         },
         "pagination": {
@@ -317,43 +341,61 @@ def get_category_options() -> List[Dict[str, str]]:
     ]
 
 
-def update_category(ref: int, new_category: str) -> Dict[str, Any]:
+def _by_merchant_frequency(rows):
+    """Largest groups of outgoing payments to one merchant first; incoming last.
+
+    Groups use the same merchant key as 'Use for all payments to this merchant',
+    so one edit at the top of the list clears the most rows.
     """
-    Update a transaction's category by its ref (integer PK).
-    Auto-learns by upserting the merchant pattern into merchant_categories.
-    Returns a presentation-ready transaction dict on success.
-    """
-    if new_category not in CATEGORY_COLORS:
-        return {"success": False}
+    from app.classify_transactions import normalize_merchant
 
-    row = db_transactions.update_transaction_category_by_id(ref, new_category)
-    if not row:
-        return {"success": False}
+    keyed = []
+    for row in rows:
+        outgoing = row.get("direction") == "out" and bool(row.get("merchant"))
+        key = normalize_merchant(row["merchant"]) if outgoing else None
+        keyed.append({**row, "group_key": key})
+    sizes = Counter(r["group_key"] for r in keyed if r["group_key"])
+    for r in keyed:
+        r["group_size"] = sizes.get(r["group_key"], 0)
+    # Stable sort keeps newest-first order inside each group.
+    return sorted(keyed, key=lambda r: (r["group_key"] is None, -r["group_size"], r["group_key"] or ""))
 
-    # Auto-learn: save the manual correction for future rule-based matching
-    raw_merchant = row.get('merchant')
-    if raw_merchant:
-        from app.classify_transactions import normalize_merchant
-        from app.db_merchant_categories import insert_merchant_category
-        normalized = normalize_merchant(raw_merchant)
-        if normalized:
-            insert_merchant_category(
-                pattern=normalized,
-                category=new_category,
-                confidence=1.0,
-                source='manual',
-            )
 
+def _transaction_row(row, similar_count=0):
+    category = _category_name(row.get('category'))
     return {
-        "success": True,
         "ref": row['id'],
-        "merchant": _clean_merchant(raw_merchant),
+        "merchant": _clean_merchant(row.get('merchant')),
         "amount": format_currency(row.get('amount'), show_sign=True) if row.get('direction') == 'in'
                   else f"-{format_currency(row.get('amount'))}",
         "date": _format_date(row.get('date')),
-        "category": new_category,
-        "categoryColor": CATEGORY_COLORS.get(new_category, "#9CA3AF"),
-        "categorySlug": _slug(new_category),
+        "category": category,
+        "categoryColor": CATEGORY_COLORS.get(category, UNCLASSIFIED_COLOR),
+        "categorySlug": _slug(category),
         "isIncome": row.get('direction') == 'in',
-        "needsReview": False,
+        "needsReview": not row.get('category') or (row.get('classification_source') != 'manual'
+            and (row.get('classification_confidence') is None or not 0.9 <= row['classification_confidence'] <= 1)),
+        "similarCount": similar_count,
     }
+
+
+def _edited_transaction(row):
+    from app.db_classification import other_payment_counts
+
+    return {
+        **_transaction_row(row, other_payment_counts([row])[0]),
+        "success": True,
+        "editId": row.get('edit_id'),
+        "batchCount": row.get('batch_count', 0),
+        "batchReverted": row.get('batch_reverted', 0),
+    }
+
+
+def update_category(ref: int, new_category: str, *, learn_merchant=False) -> Dict[str, Any]:
+    from app.db_classification import edit_category
+    return _edited_transaction(edit_category(ref, new_category, learn_merchant=learn_merchant))
+
+
+def undo_category(edit_id: int) -> Dict[str, Any]:
+    from app.db_classification import undo_category as undo
+    return _edited_transaction(undo(edit_id))

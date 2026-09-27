@@ -4,119 +4,44 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Expenso{% endblock %}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        maroon: {
-                            50: '#fdf2f2',
-                            100: '#fce4e4',
-                            200: '#fbcdcd',
-                            300: '#f6a3a3',
-                            400: '#ee6b6b',
-                            500: '#e33d3d',
-                            600: '#d02424',
-                            700: '#ae1b1b',
-                            800: '#8B1A1A',
-                            900: '#761919',
-                            950: '#400a0a',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Work+Sans:wght@400;500;600&display=swap">
+    <link rel="stylesheet" href="/static/app.css">
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7"></script>
-    <link rel="stylesheet" href="/static/app.css">
     {% block head %}{% endblock %}
 </head>
-<body class="bg-gray-100 text-gray-900 min-h-screen flex flex-col">
-    <!-- Navigation -->
-    <nav class="bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6">
-            <div class="flex items-center justify-between h-16">
-                <!-- Logo -->
-                <a href="/" class="flex items-center gap-2">
-                    <div class="w-8 h-8 bg-maroon-800 rounded-lg flex items-center justify-center">
-                        <span class="text-white font-bold text-sm">E</span>
-                    </div>
-                    <span class="text-xl font-bold text-maroon-800 tracking-tight">EXPENSO</span>
-                </a>
-
-                <!-- Desktop Nav -->
-                <div class="hidden sm:flex items-center gap-1">
-                    {% set current_path = request.url.path %}
-                    <a href="/year/{{ now_year }}"
-                       class="px-4 py-2 rounded-lg text-sm font-medium transition-colors
-                              {% if '/year/' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
-                        Year
-                    </a>
-                    <a href="/month/{{ now_year }}/{{ now_month }}"
-                       class="px-4 py-2 rounded-lg text-sm font-medium transition-colors
-                              {% if '/month/' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
-                        Month
-                    </a>
-                    <a href="/transactions"
-                       class="px-4 py-2 rounded-lg text-sm font-medium transition-colors
-                              {% if '/transactions' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
-                        Transactions
-                    </a>
-                    <a href="/ask"
-                       class="px-4 py-2 rounded-lg text-sm font-medium transition-colors
-                              {% if '/ask' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
-                        Ask
-                    </a>
-                </div>
-
-                <!-- Mobile hamburger -->
-                <button onclick="document.getElementById('mobile-menu').classList.toggle('hidden')"
-                        class="sm:hidden p-2 rounded-lg hover:bg-gray-100">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
-                    </svg>
-                </button>
+<body>
+    {% set current_path = request.url.path %}
+    <nav class="nav" id="site-nav" aria-label="Main">
+        <div class="container nav-inner">
+            <a href="/month/{{ now_year }}/{{ now_month }}" class="wordmark">Expenso</a>
+            <button type="button" class="nav-toggle" aria-expanded="false" aria-controls="nav-links"
+                    aria-label="Menu" onclick="toggleNav(this)">
+                <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/></svg>
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="/month/{{ now_year }}/{{ now_month }}" {% if current_path.startswith('/month/') %}aria-current="page"{% endif %}>Month</a>
+                <a href="/year/{{ now_year }}" {% if current_path.startswith('/year/') %}aria-current="page"{% endif %}>Year</a>
+                <a href="/transactions" {% if current_path.startswith('/transactions') %}aria-current="page"{% endif %}>Transactions</a>
+                <a href="/review" {% if current_path.startswith('/review') %}aria-current="page"{% endif %}>Review</a>
+                <a href="/ask" {% if current_path.startswith('/ask') %}aria-current="page"{% endif %}>Ask</a>
             </div>
-        </div>
-
-        <!-- Mobile menu -->
-        <div id="mobile-menu" class="hidden sm:hidden border-t border-gray-200 bg-white px-4 py-3 space-y-1">
-            <a href="/year/{{ now_year }}"
-               class="block px-3 py-2 rounded-lg text-sm font-medium
-                      {% if '/year/' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600{% endif %}">
-                Year
-            </a>
-            <a href="/month/{{ now_year }}/{{ now_month }}"
-               class="block px-3 py-2 rounded-lg text-sm font-medium
-                      {% if '/month/' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600{% endif %}">
-                Month
-            </a>
-            <a href="/transactions"
-               class="block px-3 py-2 rounded-lg text-sm font-medium
-                      {% if '/transactions' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600{% endif %}">
-                Transactions
-            </a>
-            <a href="/ask"
-               class="block px-3 py-2 rounded-lg text-sm font-medium
-                      {% if '/ask' in current_path %}bg-maroon-800 text-white{% else %}text-gray-600{% endif %}">
-                Ask
-            </a>
         </div>
     </nav>
 
-    <!-- Main Content -->
-    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
+    <main class="container {% block main_class %}{% endblock %}">
         {% block content %}{% endblock %}
     </main>
 
-    <!-- Footer -->
-    <footer class="bg-white border-t border-gray-200 py-4 mt-auto">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 text-center text-sm text-gray-400">
-            Expenso &middot; Personal Finance Tracker
+    {% block footer %}
+    <footer class="footer">
+        <div class="container">
+            Expenso &middot; Personal finance tracker &middot; <a href="/pipeline">Data status</a>
         </div>
     </footer>
+    {% endblock %}
 
     <script src="/static/app.js"></script>
     {% block scripts %}{% endblock %}

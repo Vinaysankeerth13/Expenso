@@ -1,0 +1,8 @@
+{% if needsReviewCount > 0 %}
+<a id="classification-review-count" href="/transactions?review=1" class="stat stat-flag stat-link divided" {% if reviewCountOob %}hx-swap-oob="outerHTML"{% endif %}>
+    <p class="stat-label">Needs review &rarr;</p>
+    <p class="stat-value num">{{ needsReviewCount }}</p>
+</a>
+{% else %}
+<div id="classification-review-count" {% if reviewCountOob %}hx-swap-oob="outerHTML"{% endif %}></div>
+{% endif %}

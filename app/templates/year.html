@@ -1,154 +1,141 @@
 {% extends "base.html" %}
 
-{% block title %}Expenso — {{ year }} Overview{% endblock %}
+{% block title %}Expenso — {{ year }}{% endblock %}
 
 {% block content %}
-<!-- Header -->
-<div class="flex items-center justify-between mb-6">
+<header class="page-head">
     <div>
-        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Strategic Overview</h1>
-        <p class="text-gray-500 text-sm mt-1">Your year-over-year strategic overview for the fiscal year {{ year }}</p>
+        <p class="eyebrow">Year</p>
+        <h1 class="page-title">{{ year }}</h1>
+        <p class="page-sub">Captured INR money movement for calendar year {{ year }}</p>
     </div>
-    <div class="flex items-center gap-2">
-        <a href="/year/{{ year - 1 }}" class="p-2 rounded-lg hover:bg-gray-200 text-gray-500">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+    <div class="period-switch">
+        <a href="/year/{{ year - 1 }}" aria-label="Previous year">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
         </a>
-        <span class="text-lg font-semibold px-3">{{ year }}</span>
-        <a href="/year/{{ year + 1 }}" class="p-2 rounded-lg hover:bg-gray-200 text-gray-500">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        <span>{{ year }}</span>
+        <a href="/year/{{ year + 1 }}" aria-label="Next year">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
         </a>
     </div>
+</header>
+
+<div class="data-note">
+    <details>
+        <summary>Captured notifications only, not bank reconciliation.<span class="more">More</span></summary>
+        <p>Captured notifications only; account coverage is not bank reconciliation. Transfers, card repayments and refunds are included. Net cash flow is not a savings measure.</p>
+        <p>{{ coverageLabel }}</p>
+    </details>
+    <a href="/pipeline">Data status &rarr;</a>
 </div>
 
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <!-- Hero Card -->
-    <div class="bg-maroon-800 rounded-2xl p-6 sm:p-8 text-white">
-        <p class="text-maroon-200 text-xs font-medium uppercase tracking-wider mb-2">Total Annual Spend</p>
-        <p class="text-4xl sm:text-5xl font-bold mb-6">{{ summary.totalSpent }}</p>
-        <div class="space-y-3">
-            <div>
-                <p class="text-maroon-300 text-xs uppercase tracking-wider">Income</p>
-                <p class="text-2xl font-semibold">{{ summary.income }}</p>
-            </div>
-            <div>
-                <p class="text-maroon-300 text-xs uppercase tracking-wider">Savings</p>
-                <p class="text-2xl font-semibold">{{ summary.savings }}</p>
-            </div>
+<section class="section hero" aria-label="Summary">
+    <p class="hero-label">Captured outflow &middot; {{ year }}</p>
+    <p class="hero-value num">{{ summary.totalSpent }}</p>
+    <div class="hero-stats">
+        <div>
+            <p class="hero-label">Captured inflow</p>
+            <p class="display num">{{ summary.income }}</p>
+        </div>
+        <div>
+            <p class="hero-label">Net captured cash flow</p>
+            <p class="display num">{{ summary.savings }}</p>
         </div>
     </div>
+</section>
 
-    <!-- Spending Intensity -->
-    <div class="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-lg font-semibold">Spending Intensity</h2>
-            <div class="flex items-center gap-1 text-xs text-gray-400">
-                <span>Low</span>
-                <span class="inline-block w-3 h-3 rounded-sm bg-maroon-100"></span>
-                <span class="inline-block w-3 h-3 rounded-sm bg-maroon-300"></span>
-                <span class="inline-block w-3 h-3 rounded-sm bg-maroon-500"></span>
-                <span class="inline-block w-3 h-3 rounded-sm bg-maroon-800"></span>
-                <span>High</span>
-            </div>
-        </div>
-        <div class="flex flex-wrap gap-2 items-end">
-            {% for block in heatmap.blocks %}
-            <div class="rounded-md flex items-center justify-center text-center transition-all heatmap-cell
-                        {% if block.level == 0 %}bg-gray-100 text-gray-400
-                        {% elif block.level == 1 %}bg-maroon-100 text-maroon-700
-                        {% elif block.level == 2 %}bg-maroon-300 text-white
-                        {% elif block.level == 3 %}bg-maroon-500 text-white
-                        {% elif block.level == 4 %}bg-maroon-800 text-white{% endif %}"
-                 style="width: {{ 40 + (block.ratio * 80) }}px; height: {{ 40 + (block.ratio * 80) }}px;"
-                 title="{{ block.month }}: {{ block.amount }}">
-                <div>
-                    <div class="text-[10px] font-medium leading-tight">{{ block.month[:3] }}</div>
-                    <div class="text-[9px] opacity-75 leading-tight">{{ block.amount }}</div>
-                </div>
-            </div>
-            {% endfor %}
+<section class="section">
+    <div class="section-head">
+        <h2 class="section-title">Spending intensity</h2>
+        <div class="ramp" aria-hidden="true">
+            <span>Low</span>
+            <i style="background: var(--ramp-1)"></i><i style="background: var(--ramp-2)"></i><i style="background: var(--ramp-3)"></i><i style="background: var(--ramp-4)"></i>
+            <span>High</span>
         </div>
     </div>
-</div>
+    <div class="tiles">
+        {% for block in heatmap.blocks %}
+        {% set unknown = block.amount == "Unknown" %}
+        <div class="tile {% if unknown %}is-unknown{% else %}level-{{ block.level }}{% endif %}">
+            <span class="m">{{ block.month[:3] }}</span>
+            <span class="v num">{% if unknown %}No data{% else %}{{ block.amount }}{% endif %}</span>
+        </div>
+        {% endfor %}
+    </div>
+</section>
 
-<!-- Bottom Row -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-    <!-- Categories -->
-    <div class="bg-white rounded-2xl p-6 shadow-sm">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-lg font-semibold">Categories</h2>
+<div class="section grid-2">
+    <section>
+        <div class="section-head">
+            <h2 class="section-title">Categories</h2>
         </div>
-        <div class="space-y-3">
-            {% for cat in categories %}
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <div class="w-3 h-3 rounded-full" style="background-color: {{ cat.color }}"></div>
-                    <span class="text-sm font-medium text-gray-700">{{ cat.name }}</span>
-                </div>
-                <span class="text-sm font-semibold text-gray-900">{{ cat.amount }}</span>
-            </div>
-            {% endfor %}
+        {% for cat in categories %}
+        <div class="list-row">
+            <span class="dot" style="background: {{ cat.color }}"></span>
+            <span class="name">{{ cat.name }}</span>
+            <span class="value num">{{ cat.amount }}</span>
         </div>
-    </div>
+        {% else %}
+        <p class="empty">No captured outflow this year.</p>
+        {% endfor %}
+    </section>
 
-    <!-- Yearly Spending Trend Chart -->
-    <div class="bg-white rounded-2xl p-6 shadow-sm">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-lg font-semibold">Yearly Spending Trend</h2>
+    <section>
+        <div class="section-head">
+            <h2 class="section-title">Monthly captured movement</h2>
+            <div class="legend">
+                <span><i class="dot" style="background: var(--dark)"></i>Outflow</span>
+                <span><i class="dot" style="background: var(--inflow)"></i>Inflow</span>
+            </div>
         </div>
-        <div class="h-64">
-            <canvas id="yearlyTrendChart"></canvas>
+        <div class="chart-box tall">
+            <canvas id="yearlyTrendChart" aria-label="Monthly captured outflow and inflow for {{ year }}" role="img"></canvas>
         </div>
-    </div>
+        <div class="chart-foot">
+            <span>Gaps mean coverage is unverified; zero means no captured movement.</span>
+        </div>
+    </section>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    const trendLabels = {{ monthlyTrend.labels | tojson }};
-    const trendSpent = {{ monthlyTrend.spent | tojson }};
-    const trendIncome = {{ monthlyTrend.income | tojson }};
-
     new Chart(document.getElementById('yearlyTrendChart'), {
         type: 'bar',
         data: {
-            labels: trendLabels,
+            labels: {{ monthlyTrend.labels | tojson }},
             datasets: [
                 {
-                    label: 'Spent',
-                    data: trendSpent,
-                    backgroundColor: '#8B1A1A',
-                    borderRadius: 6,
-                    barPercentage: 0.6,
+                    label: 'Captured outflow',
+                    data: {{ monthlyTrend.spent | tojson }},
+                    backgroundColor: THEME.dark,
+                    borderRadius: 4,
+                    barPercentage: 0.8,
+                    categoryPercentage: 0.7,
                 },
                 {
-                    label: 'Income',
-                    data: trendIncome,
-                    backgroundColor: '#FECACA',
-                    borderRadius: 6,
-                    barPercentage: 0.6,
-                }
-            ]
+                    label: 'Captured inflow',
+                    data: {{ monthlyTrend.income | tojson }},
+                    backgroundColor: THEME.inflow,
+                    borderRadius: 4,
+                    barPercentage: 0.8,
+                    categoryPercentage: 0.7,
+                },
+            ],
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: { usePointStyle: true, pointStyle: 'circle', padding: 20 }
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: { color: '#F3F4F6' },
-                    ticks: {
-                        callback: function(v) { return formatINR(v); }
-                    }
+                tooltip: {
+                    callbacks: {
+                        label: ctx => ctx.dataset.label + ': ' +
+                            (ctx.raw === null ? 'coverage unverified' : '₹' + formatINR(ctx.raw)),
+                    },
                 },
-                x: { grid: { display: false } }
-            }
-        }
+            },
+            scales: barScales(),
+        },
     });
 </script>
 {% endblock %}

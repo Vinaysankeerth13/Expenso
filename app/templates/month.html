@@ -3,204 +3,175 @@
 {% block title %}Expenso — {{ monthName }} {{ year }}{% endblock %}
 
 {% block content %}
-<!-- Header with month navigation -->
-<div class="flex items-center justify-between mb-6">
+<header class="page-head">
     <div>
-        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Monthly Overview</h1>
+        <p class="eyebrow">Overview</p>
+        <h1 class="page-title">Month</h1>
     </div>
-    <div class="flex items-center gap-2">
-        <a href="/month/{{ prevMonth.year }}/{{ prevMonth.month }}"
-           class="p-2 rounded-lg hover:bg-gray-200 text-gray-500">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+    <div class="period-switch">
+        <a href="/month/{{ prevMonth.year }}/{{ prevMonth.month }}" aria-label="Previous month">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
         </a>
-        <span class="text-lg font-semibold px-3">{{ monthName }} {{ year }}</span>
-        <a href="/month/{{ nextMonth.year }}/{{ nextMonth.month }}"
-           class="p-2 rounded-lg hover:bg-gray-200 text-gray-500">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        <span>{{ monthName }} {{ year }}</span>
+        <a href="/month/{{ nextMonth.year }}/{{ nextMonth.month }}" aria-label="Next month">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
         </a>
     </div>
+</header>
+
+<div class="data-note">
+    <details>
+        <summary>Captured from bank notifications, not reconciled spend.<span class="more">More</span></summary>
+        <p>INR movements captured from bank notifications. Outflow can include transfers and card repayments; inflow can include refunds. These are not reconciled purchase-spend or savings figures.</p>
+        <p>{{ coverageLabel }}</p>
+    </details>
+    <a href="/pipeline">Data status &rarr;</a>
 </div>
 
-<!-- Stat Cards -->
-<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-    <!-- Total Spend -->
-    <div class="bg-white rounded-2xl p-6 shadow-sm">
-        <p class="text-xs text-gray-400 uppercase tracking-wider mb-1">Total Spend (Month)</p>
-        <p class="text-3xl sm:text-4xl font-bold text-gray-900">{{ summary.totalSpent }}</p>
-        <a href="/year/{{ year }}" class="text-maroon-700 text-xs font-medium mt-2 inline-block hover:underline">View Details &rarr;</a>
-    </div>
-
-    <!-- MoM Change -->
-    <div class="bg-white rounded-2xl p-6 shadow-sm">
-        <p class="text-xs text-gray-400 uppercase tracking-wider mb-1">MoM Change</p>
-        <div class="flex items-center gap-2">
-            <p class="text-3xl font-bold {% if summary.changePositive %}text-red-600{% else %}text-green-600{% endif %}">
-                {% if summary.changePositive %}+{% endif %}{{ summary.change }}%
-            </p>
-            <div class="w-8 h-8 rounded-full flex items-center justify-center
-                        {% if summary.changePositive %}bg-red-100{% else %}bg-green-100{% endif %}">
-                <svg class="w-4 h-4 {% if summary.changePositive %}text-red-600{% else %}text-green-600{% endif %}"
-                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    {% if summary.changePositive %}
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
-                    {% else %}
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                    {% endif %}
-                </svg>
-            </div>
-        </div>
-        <p class="text-xs text-gray-400 mt-1">vs. previous month</p>
-    </div>
-
-    <!-- Top Category -->
-    <div class="bg-white rounded-2xl p-6 shadow-sm">
-        <p class="text-xs text-gray-400 uppercase tracking-wider mb-1">Top Category</p>
-        <p class="text-3xl font-bold text-gray-900">{{ summary.topCategoryShare }}%</p>
-        <div class="flex items-center gap-2 mt-1">
-            <div class="w-3 h-3 rounded-full" style="background-color: {{ summary.topCategoryColor }}"></div>
-            <span class="text-sm text-gray-600">{{ summary.topCategory }}</span>
-        </div>
-    </div>
-</div>
-
-<!-- Anomaly Callouts (current month only) -->
-{% if anomalies %}
-<div class="mb-6 space-y-3">
-    {% for a in anomalies %}
-    <div class="flex items-start gap-4 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4">
-        <div class="mt-0.5 flex-shrink-0">
-            <div class="w-8 h-8 rounded-full flex items-center justify-center" style="background-color: {{ a.color }}20;">
-                <svg class="w-4 h-4" style="color: {{ a.color }};" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                          d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
-                </svg>
-            </div>
-        </div>
-        <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-sm font-semibold text-gray-900">{{ a.category }}</span>
-                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                    +{{ a.velocity_pct }}% above average
-                </span>
-            </div>
-            <p class="text-sm text-gray-600 mt-0.5">
-                Spending <span class="font-medium text-gray-900">{{ a.current_amount }}</span> this month
-                vs. <span class="font-medium">{{ a.avg_amount }}</span> avg
-                &mdash; <span class="font-medium text-amber-700">{{ a.abs_deviation }} over budget</span>
-            </p>
-        </div>
-    </div>
-    {% endfor %}
-</div>
+{% if needsReviewCount %}
+<a class="review-banner" href="/transactions?review=1">
+    <span class="dot" style="background: var(--flag)"></span>
+    <span class="text"><strong class="num">{{ needsReviewCount }} {{ "transaction needs" if needsReviewCount == 1 else "transactions need" }}</strong> a category check.</span>
+    <span class="action">Review now &rarr;</span>
+</a>
 {% endif %}
 
-<!-- Daily Spending Trend -->
-<div class="bg-white rounded-2xl p-6 shadow-sm mb-6">
-    <h2 class="text-lg font-semibold mb-4">Daily Spending Trend</h2>
-    <div class="h-64">
-        <canvas id="dailyChart"></canvas>
+<section class="section hero-grid" aria-label="Summary">
+    <div class="hero">
+        <p class="hero-label">Captured outflow &middot; {{ monthName }}</p>
+        <p class="hero-value num">{{ summary.totalSpent }}</p>
+        <a href="/transactions" class="hero-link">View all transactions &rarr;</a>
     </div>
-</div>
+    <div class="stat-stack">
+        <div class="stat">
+            <p class="stat-label">Vs. previous month</p>
+            {% if summary.change is not none %}
+            <p class="stat-value num {% if summary.change < 0 %}is-down{% endif %}">{{ "%+.1f" | format(summary.change) }}%</p>
+            <p class="stat-detail">{{ summary.comparisonLabel }}</p>
+            {% else %}
+            <p class="stat-quiet">No comparable percentage</p>
+            <p class="stat-detail">{{ summary.comparisonMessage }}</p>
+            {% endif %}
+        </div>
+        <div class="stat">
+            <p class="stat-label">Top category</p>
+            <p class="stat-inline">
+                <span class="dot" style="background: {{ summary.topCategoryColor }}"></span>
+                {{ summary.topCategory }}
+                <span class="stat-detail" style="margin: 0; font-weight: 400;">{{ summary.topCategoryShare }}% of outflow</span>
+            </p>
+        </div>
+    </div>
+</section>
 
-<!-- Bottom Row: Categories + Recent Transactions -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <!-- Category Breakdown -->
-    <div class="bg-white rounded-2xl p-6 shadow-sm">
-        <h2 class="text-lg font-semibold mb-4">Category Breakdown</h2>
-        <div class="h-48 mb-4">
-            <canvas id="categoryChart"></canvas>
-        </div>
-        <div class="space-y-2">
-            {% for cat in categories %}
-            <div class="flex items-center justify-between text-sm">
-                <div class="flex items-center gap-2">
-                    <div class="w-3 h-3 rounded-full" style="background-color: {{ cat.color }}"></div>
-                    <span class="text-gray-600">{{ cat.name }}</span>
-                </div>
-                <span class="font-medium">{{ cat.percentage }}%</span>
-            </div>
-            {% endfor %}
+{% if anomalies %}
+<section class="section">
+    <div class="section-head">
+        <div>
+            <h2 class="section-title">Running above average</h2>
+            <p class="section-sub">Compared with each category's matched-period average. Only jumps of 100% or more are flagged.</p>
         </div>
     </div>
+    <div>
+        {% for a in anomalies %}
+        {% set flagged = (a.velocity_pct or 0) >= 100 %}
+        <div class="anomaly-row">
+            <span class="dot" style="background: {{ a.color }}"></span>
+            <span class="name">{{ a.category }}</span>
+            <span class="detail">{{ a.current_amount }} over matched days vs {{ a.avg_amount }} average</span>
+            <span class="delta {% if flagged %}is-flagged{% endif %}">+{{ "%.1f" | format(a.velocity_pct or 0) }}% above average{% if flagged %} &middot; flagged{% endif %}</span>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
 
-    <!-- Recent Transactions -->
-    <div class="bg-white rounded-2xl p-6 shadow-sm">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-lg font-semibold">Recent Transactions</h2>
-            <a href="/transactions" class="text-maroon-700 text-xs font-medium hover:underline">See all</a>
-        </div>
-        <div class="space-y-4">
-            {% for txn in recentTransactions %}
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold"
-                         style="background-color: {{ txn.categoryColor }}">
-                        {{ txn.merchant[0] | upper }}
-                    </div>
-                    <div>
-                        <p class="text-sm font-medium text-gray-900">{{ txn.merchant }}</p>
-                        <p class="text-xs text-gray-400">{{ txn.category }} &middot; {{ txn.date }}</p>
-                    </div>
-                </div>
-                <span class="text-sm font-semibold {% if txn.isIncome %}text-green-600{% else %}text-gray-900{% endif %}">
-                    {{ txn.amount }}
-                </span>
-            </div>
-            {% endfor %}
-        </div>
+<section class="section">
+    <div class="section-head">
+        <h2 class="section-title">Daily captured outflow</h2>
     </div>
+    <div class="chart-box">
+        <canvas id="dailyChart" aria-label="Daily captured outflow for {{ monthName }} {{ year }}" role="img"></canvas>
+    </div>
+    <div class="chart-foot">
+        <span id="peak-day"></span>
+        <span>Gaps mean coverage is unverified; zero means no captured movement.</span>
+    </div>
+</section>
+
+<div class="section grid-2">
+    <section>
+        <div class="section-head">
+            <h2 class="section-title">Categories</h2>
+        </div>
+        {% for cat in categories %}
+        <div class="list-row">
+            <span class="dot" style="background: {{ cat.color }}"></span>
+            <span class="name">{{ cat.name }}</span>
+            <span class="value num">{{ cat.amount }}</span>
+            <span class="share num">{{ cat.percentage }}%</span>
+        </div>
+        {% else %}
+        <p class="empty">No captured outflow this month.</p>
+        {% endfor %}
+    </section>
+
+    <section>
+        <div class="section-head">
+            <h2 class="section-title">Recent transactions</h2>
+            <a href="/transactions" class="text-link" style="font-size: 14px;">See all &rarr;</a>
+        </div>
+        {% for txn in recentTransactions %}
+        <div class="mini-row">
+            <span class="avatar" aria-hidden="true">{{ txn.merchant[0] | upper }}</span>
+            <div class="who">
+                <p class="merchant">{{ txn.merchant }}</p>
+                <p class="meta"><span class="dot" style="background: {{ txn.categoryColor }}; width: 7px; height: 7px;"></span>{{ txn.category }} &middot; {{ txn.date }}</p>
+            </div>
+            <span class="amount num {% if txn.isIncome %}is-in{% endif %}">{{ txn.amount }}</span>
+        </div>
+        {% else %}
+        <p class="empty">No transactions recorded this month.</p>
+        {% endfor %}
+    </section>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    // Daily spending bar chart
-    new Chart(document.getElementById('dailyChart'), {
-        type: 'bar',
-        data: {
-            labels: {{ dailyTrend.labels | tojson }},
-            datasets: [{
-                data: {{ dailyTrend.amounts | tojson }},
-                backgroundColor: '#8B1A1A',
-                borderRadius: 4,
-                barPercentage: 0.7,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: { color: '#F3F4F6' },
-                    ticks: { callback: function(v) { return formatINR(v); } }
-                },
-                x: { grid: { display: false } }
-            }
-        }
-    });
+    (function () {
+        const amounts = {{ dailyTrend.amounts | tojson }};
+        const labels = {{ dailyTrend.labels | tojson }};
+        let peak = -1;
+        amounts.forEach((v, i) => { if (v !== null && v > 0 && (peak < 0 || v > amounts[peak])) peak = i; });
 
-    // Category donut chart
-    const catData = {{ categories | tojson }};
-    new Chart(document.getElementById('categoryChart'), {
-        type: 'doughnut',
-        data: {
-            labels: catData.map(c => c.name),
-            datasets: [{
-                data: catData.map(c => c.rawAmount),
-                backgroundColor: catData.map(c => c.color),
-                borderWidth: 0,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            cutout: '65%',
-            plugins: {
-                legend: { display: false }
-            }
+        new Chart(document.getElementById('dailyChart'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: amounts,
+                    backgroundColor: amounts.map((_, i) => i === peak ? THEME.dark : THEME.bar),
+                    hoverBackgroundColor: THEME.dark,
+                    borderRadius: 3,
+                    barPercentage: 0.78,
+                    categoryPercentage: 0.92,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    tooltip: { callbacks: { title: items => '{{ monthName }} ' + items[0].label } },
+                },
+                scales: barScales(),
+            },
+        });
+
+        if (peak >= 0) {
+            document.getElementById('peak-day').innerHTML =
+                'Peak day: <strong>{{ monthName }} ' + labels[peak] + ' &middot; ₹' + formatINR(amounts[peak]) + '</strong>';
         }
-    });
+    })();
 </script>
 {% endblock %}

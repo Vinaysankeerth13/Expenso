@@ -1,73 +1,68 @@
 {% extends "base.html" %}
 
-{% block title %}Expenso — Transactions{% endblock %}
+{% block title %}Expenso — {{ "Needs review" if filters.needsReview else "Transactions" }}{% endblock %}
 
 {% block content %}
-<!-- Header -->
-<div class="mb-6">
-    <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Transactions</h1>
-    <p class="text-gray-500 text-sm mt-1">Your full-featured spending history</p>
+<header class="page-head">
+    <div>
+        <p class="eyebrow">Transactions</p>
+        <h1 class="page-title">{{ "Needs review" if filters.needsReview else "All activity" }}</h1>
+        {% if filters.needsReview %}
+        <p class="page-sub">Unclassified or low-confidence categories. Pick the right category and the tag clears.</p>
+        {% endif %}
+    </div>
+</header>
+
+<nav class="tabs" aria-label="Transaction views">
+    <a href="/transactions" {% if not filters.needsReview %}aria-current="page"{% endif %}>All</a>
+    <a href="/transactions?review=1" {% if filters.needsReview %}aria-current="page"{% endif %}>
+        Needs review {% include "partials/review_tab_count.html" %}
+    </a>
+</nav>
+
+{% include "partials/transaction_stats.html" %}
+
+<div class="filters">
+    {% if filters.needsReview %}<input type="hidden" name="review" value="1">{% endif %}
+    <label class="search">
+        <span class="sr-only">Search merchants</span>
+        <input type="search"
+               id="search-input"
+               name="q"
+               value="{{ filters.query }}"
+               placeholder="Search merchants…"
+               class="field-line"
+               style="width: 100%;"
+               hx-get="/htmx/filtered-transactions"
+               hx-trigger="keyup changed delay:300ms, search"
+               hx-target="#transaction-list"
+               hx-include="[name='category'], [name='review']"
+               hx-swap="innerHTML">
+    </label>
+    <label>
+        <span class="sr-only">Filter by category</span>
+        <select name="category"
+                class="field-line"
+                hx-get="/htmx/filtered-transactions"
+                hx-trigger="change"
+                hx-target="#transaction-list"
+                hx-include="[name='q'], [name='review']"
+                hx-swap="innerHTML">
+            <option value="">All categories</option>
+            {% for cat in filters.categories %}
+            <option value="{{ cat }}" {% if filters.category == cat %}selected{% endif %}>{{ cat }}</option>
+            {% endfor %}
+        </select>
+    </label>
 </div>
 
-<!-- Summary Pills -->
-<div class="flex flex-wrap gap-3 mb-6">
-    <div class="bg-white rounded-xl px-5 py-3 shadow-sm">
-        <p class="text-xs text-gray-400 uppercase tracking-wider">Total</p>
-        <p class="text-lg font-bold text-gray-900">{{ summary.totalSpent }}</p>
-    </div>
-    <div class="bg-white rounded-xl px-5 py-3 shadow-sm">
-        <p class="text-xs text-gray-400 uppercase tracking-wider">Count</p>
-        <p class="text-lg font-bold text-gray-900">{{ summary.count }}</p>
-    </div>
-    <div class="bg-white rounded-xl px-5 py-3 shadow-sm">
-        <p class="text-xs text-gray-400 uppercase tracking-wider">Average</p>
-        <p class="text-lg font-bold text-gray-900">{{ summary.average }}</p>
-    </div>
-    {% if needsReviewCount > 0 %}
-    <div class="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 shadow-sm flex items-center gap-2">
-        <svg class="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-        </svg>
-        <div>
-            <p class="text-xs text-amber-600 uppercase tracking-wider font-medium">Needs Review</p>
-            <p class="text-lg font-bold text-amber-700">{{ needsReviewCount }}</p>
-        </div>
-    </div>
-    {% endif %}
-</div>
+<div id="edit-notice" class="edit-notice" role="status"></div>
 
-<!-- Filters -->
-<div class="flex flex-col sm:flex-row gap-3 mb-6">
-    <input type="text"
-           id="search-input"
-           name="q"
-           value="{{ filters.query }}"
-           placeholder="Search merchants..."
-           class="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-maroon-300 focus:border-maroon-400"
-           hx-get="/htmx/filtered-transactions"
-           hx-trigger="keyup changed delay:300ms"
-           hx-target="#transaction-list"
-           hx-include="[name='category']"
-           hx-swap="innerHTML">
-    <select name="category"
-            class="px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-maroon-300"
-            hx-get="/htmx/filtered-transactions"
-            hx-trigger="change"
-            hx-target="#transaction-list"
-            hx-include="[name='q']"
-            hx-swap="innerHTML">
-        <option value="">All Categories</option>
-        {% for cat in filters.categories %}
-        <option value="{{ cat }}" {% if filters.category == cat %}selected{% endif %}>{{ cat }}</option>
-        {% endfor %}
-    </select>
-</div>
-
-<!-- Transaction List -->
-<div class="bg-white rounded-2xl shadow-sm overflow-hidden">
-    <div id="transaction-list">
-        {% include "partials/transaction_rows.html" %}
-    </div>
+<div id="transaction-list" class="txn-list"
+     hx-get="/htmx/filtered-transactions"
+     hx-trigger="transactions-changed from:body"
+     hx-include="[name='q'], [name='category'], [name='review'], [name='page']"
+     hx-swap="innerHTML">
+    {% include "partials/transaction_rows.html" %}
 </div>
 {% endblock %}

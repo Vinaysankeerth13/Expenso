@@ -1,0 +1,6 @@
+{% set restored = txn.batchReverted + 1 %}
+<div id="edit-notice" class="edit-notice" role="status">
+    <span>Undone. {{ restored }} {{ "payment" if restored == 1 else "payments" }} restored to {{ "its" if restored == 1 else "their" }} previous {{ "category" if restored == 1 else "categories" }}, and the merchant rule was reverted.</span>
+</div>
+{% include "partials/classification_review_count.html" %}
+{% include "partials/review_tab_count.html" %}

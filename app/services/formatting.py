@@ -10,6 +10,16 @@ dependencies on the rest of the app, so nothing can cycle through it.
 """
 
 
+def display_merchant(value):
+    """Drop a leading UPI handle from "handle@bank NAME" strings; leave anything else untouched."""
+    if not isinstance(value, str):
+        return value
+    parts = value.strip().split(None, 1)
+    if len(parts) == 2 and "@" in parts[0]:
+        return parts[1]
+    return value
+
+
 def format_currency(amount, show_sign=False) -> str:
     """Format amount in Indian numbering system (1,23,456.00)."""
     if amount is None:

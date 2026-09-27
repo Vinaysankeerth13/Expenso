@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Expenso — Review{% endblock %}
+{% block content %}
+<header class="page-head">
+    <div>
+        <p class="eyebrow">Review</p>
+        <h1 class="page-title">Messages needing review</h1>
+        <p class="page-sub" style="max-width: 720px;">{% include "partials/review_count.html" %} could not be confidently recorded.
+            These candidate amounts are excluded from totals. If reprocessing conflicts with
+            an existing transaction, that original record remains unchanged pending review.</p>
+        <p class="page-sub" style="max-width: 720px;">After a parser update, use <strong>Retry with current parser</strong>.
+            A message that now reads cleanly moves into your totals; nothing is deleted.</p>
+    </div>
+</header>
+
+<section class="section">
+    {% for item in reviews %}
+    {% include "partials/review_item.html" %}
+    {% else %}
+    <p class="empty">No messages are waiting for review.</p>
+    {% endfor %}
+</section>
+
+{% if page > 1 or has_next %}
+<nav class="pager" aria-label="Review pages">
+    {% if page > 1 %}<a href="/review?page={{ page - 1 }}">&larr; Previous</a>{% endif %}
+    {% if has_next %}<a href="/review?page={{ page + 1 }}">Next &rarr;</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}
