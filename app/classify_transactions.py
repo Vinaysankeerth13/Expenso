@@ -24,22 +24,21 @@ Usage:
 
 import sys
 import os
+
 sys.path.append(os.getcwd())
 
 import re
 import json
+import math
 import argparse
 import logging
 from typing import Dict, Any, Optional
-from dotenv import load_dotenv
 
-load_dotenv()
 
 from app import db_transactions
 from app.config import ANTHROPIC_MODEL, CATEGORIES, MERCHANT_PREFIX_PATTERN
 from app.db_merchant_categories import (
     lookup_merchant_category,
-    insert_merchant_category,
     get_classification_stats,
 )
 
@@ -104,7 +103,7 @@ def classify_transaction(transaction: Dict[str, Any]) -> Dict[str, Any]:
     Classify a single transaction.
 
     Strategy:
-        1. Income: direction='in' -> 'Income'
+        1. Incoming movements require review of their purpose
         2. Rule-based: look up normalized merchant in merchant_categories
         3. LLM fallback: call Claude for unmatched merchants
 
@@ -114,13 +113,13 @@ def classify_transaction(transaction: Dict[str, Any]) -> Dict[str, Any]:
     direction = transaction.get("direction", "unknown")
     merchant = transaction.get("merchant") or ""
 
-    # Step 1: Income is straightforward
+    # Direction alone cannot distinguish earnings from refunds or transfers.
     if direction == "in":
         return {
-            "category": "Income",
-            "confidence": 1.0,
+            "category": "Other",
+            "confidence": 0.5,
             "source": "rule",
-            "rationale": "Incoming transaction (credited)",
+            "rationale": "Incoming movement; purpose needs review (income, refund or transfer)",
         }
 
     # Step 2: Normalize and look up rules
@@ -130,27 +129,30 @@ def classify_transaction(transaction: Dict[str, Any]) -> Dict[str, Any]:
     if normalized:
         match = lookup_merchant_category(normalized)
         if match:
+            confidence = float(match.get("confidence") or 0)
+            if (
+                not math.isfinite(confidence)
+                or not 0 <= confidence <= 1
+                or match["category"] not in CATEGORIES
+            ):
+                return {
+                    "category": "Other",
+                    "confidence": 0,
+                    "source": "rule",
+                    "rationale": "Invalid merchant rule requires review",
+                }
+            if match.get("source") == "llm" and match["category"] == "Transfers":
+                return {
+                    "category": "Other",
+                    "confidence": 0.5,
+                    "source": "llm",
+                    "rationale": "Model-inferred transfer needs review of payment purpose",
+                }
             return {
                 "category": match["category"],
-                "confidence": 1.0,
-                "source": "rule",
+                "confidence": confidence,
+                "source": "llm" if match.get("source") == "llm" else "rule",
                 "rationale": f"Matched pattern: '{match['merchant_pattern']}'",
-            }
-
-    # Step 2.5: P2P transfer heuristic for UPI
-    # UPI merchants with personal names (all caps, 2-4 words) are likely transfers
-    tx_source = transaction.get("source", "unknown")
-    if tx_source == "hdfc_upi" and normalized:
-        words = normalized.split()
-        # Personal names: 2-4 words, all alphabetic, no business keywords
-        if (2 <= len(words) <= 4
-                and all(w.isalpha() for w in words)
-                and not lookup_merchant_category(normalized)):
-            return {
-                "category": "Transfers",
-                "confidence": 0.85,
-                "source": "rule",
-                "rationale": "UPI P2P transfer (personal name detected)",
             }
 
     # Step 3: LLM classification
@@ -159,17 +161,15 @@ def classify_transaction(transaction: Dict[str, Any]) -> Dict[str, Any]:
     llm_result = classify_with_llm(merchant, normalized, amount, source)
 
     if llm_result:
-        # Auto-learn: if LLM is confident enough, save the pattern for future
-        if llm_result["confidence"] >= 0.9 and normalized:
-            insert_merchant_category(
-                pattern=normalized,
-                category=llm_result["category"],
-                confidence=llm_result["confidence"],
-                source="llm",
-            )
-            log.info(f"Auto-learned: '{normalized}' -> '{llm_result['category']}' "
-                     f"(confidence={llm_result['confidence']})")
-
+        # A model prediction is a transaction decision, never permission to
+        # create a merchant-wide rule. Rules require an explicit user choice.
+        if llm_result["category"] == "Transfers":
+            return {
+                "category": "Other",
+                "confidence": 0.5,
+                "source": "llm",
+                "rationale": "Payment purpose cannot be established from a name; review required",
+            }
         return {
             "category": llm_result["category"],
             "confidence": llm_result["confidence"],
@@ -186,9 +186,9 @@ def classify_transaction(transaction: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def classify_with_llm(merchant: str, normalized: str,
-                      amount: Optional[float],
-                      source: str) -> Optional[Dict[str, Any]]:
+def classify_with_llm(
+    merchant: str, normalized: str, amount: Optional[float], source: str
+) -> Optional[Dict[str, Any]]:
     """
     Use Claude API to classify a merchant into a category.
 
@@ -221,7 +221,8 @@ Respond with ONLY valid JSON (no markdown, no explanation outside JSON):
 {{"category": "<one of the categories above>", "confidence": <0.0 to 1.0>, "rationale": "<one short sentence>"}}
 
 Rules:
-- "Transfers" is for person-to-person payments (individual names, not businesses)
+- A personal name or UPI address does not establish payment purpose. Do not infer Transfers from names.
+- Use Other with confidence below 0.9 when the purpose is uncertain.
 - "Food & Dining" is for restaurants, food delivery, cafes
 - "Groceries" is for grocery delivery, supermarkets, kirana stores
 - "Subscriptions" is for recurring digital services (Netflix, Spotify, etc.)
@@ -229,12 +230,14 @@ Rules:
 - Confidence should reflect how certain you are (0.5 = unsure, 0.9+ = very sure)"""
 
     try:
-        client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model=ANTHROPIC_MODEL,
-            max_tokens=150,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        with anthropic.Anthropic(
+            api_key=api_key, timeout=20.0, max_retries=1
+        ) as client:
+            response = client.messages.create(
+                model=ANTHROPIC_MODEL,
+                max_tokens=150,
+                messages=[{"role": "user", "content": prompt}],
+            )
 
         text = response.content[0].text.strip()
         # Strip markdown code fences if present
@@ -243,14 +246,26 @@ Rules:
             text = re.sub(r"\s*```$", "", text)
         result = json.loads(text)
 
-        # Validate category
+        # Validate the complete response before persisting any classification.
+        if not isinstance(result, dict):
+            return None
+        confidence = result.get("confidence")
+        if (
+            isinstance(confidence, bool)
+            or not isinstance(confidence, (int, float))
+            or not math.isfinite(confidence)
+            or not 0 <= confidence <= 1
+        ):
+            return None
+        if not isinstance(result.get("rationale", ""), str):
+            return None
         if result.get("category") not in CATEGORIES:
             log.warning(f"LLM returned invalid category: {result.get('category')}")
             return None
 
         return {
             "category": result["category"],
-            "confidence": float(result.get("confidence", 0.5)),
+            "confidence": float(confidence),
             "rationale": result.get("rationale", "LLM classification"),
         }
     except json.JSONDecodeError as e:
@@ -261,8 +276,9 @@ Rules:
         return None
 
 
-def batch_classify(limit: int = 1000, reclassify_all: bool = False,
-                   dry_run: bool = False) -> Dict[str, int]:
+def batch_classify(
+    limit: int = 1000, reclassify_all: bool = False, dry_run: bool = False
+) -> Dict[str, int]:
     """
     Classify transactions in batch.
 
@@ -294,6 +310,9 @@ def batch_classify(limit: int = 1000, reclassify_all: bool = False,
     log.info(f"Processing {len(transactions)} transactions...")
 
     for txn in transactions:
+        if txn.get("classification_source") == "manual":
+            stats["skipped"] += 1
+            continue
         txn_id = txn["transaction_id"]
         merchant = txn.get("merchant") or "(none)"
 
@@ -303,9 +322,17 @@ def batch_classify(limit: int = 1000, reclassify_all: bool = False,
         source = result["source"]
         rationale = result["rationale"]
 
+        if confidence <= 0:
+            # Temporary model failures must not become permanent, successful
+            # classifications. Existing zero-confidence fallbacks are retried.
+            stats["failed"] += 1
+            continue
+
         if dry_run:
-            print(f"  {merchant:50s} -> {category:20s} "
-                  f"(conf={confidence:.1f}, src={source}, {rationale})")
+            print(
+                f"  {merchant:50s} -> {category:20s} "
+                f"(conf={confidence:.1f}, src={source}, {rationale})"
+            )
             stats[f"{source}_classified"] += 1
             continue
 
@@ -375,24 +402,27 @@ def main():
         description="Classify transactions into spending categories"
     )
     parser.add_argument(
-        "--unclassified-only", action="store_true", default=True,
-        help="Classify only uncategorized transactions (default)"
+        "--unclassified-only",
+        action="store_true",
+        default=True,
+        help="Classify only uncategorized transactions (default)",
     )
     parser.add_argument(
-        "--all", action="store_true",
-        help="Reclassify all transactions"
+        "--all", action="store_true", help="Reclassify all transactions"
     )
     parser.add_argument(
-        "--limit", type=int, default=1000,
-        help="Max transactions to process (default: 1000)"
+        "--limit",
+        type=int,
+        default=1000,
+        help="Max transactions to process (default: 1000)",
     )
     parser.add_argument(
-        "--dry-run", action="store_true",
-        help="Preview classifications without writing to DB"
+        "--dry-run",
+        action="store_true",
+        help="Preview classifications without writing to DB",
     )
     parser.add_argument(
-        "--stats", action="store_true",
-        help="Show classification statistics and exit"
+        "--stats", action="store_true", help="Show classification statistics and exit"
     )
 
     args = parser.parse_args()
@@ -411,6 +441,8 @@ def main():
     )
 
     print_batch_stats(stats)
+    if stats["failed"]:
+        raise RuntimeError("Classification failures remain retryable")
 
     if not args.dry_run:
         print_classification_stats()

@@ -28,8 +28,10 @@ def lookup_merchant_category(normalized_merchant: str) -> Optional[Dict[str, Any
 
             cur.execute(
                 """SELECT * FROM merchant_categories
-                   WHERE %s ILIKE '%%' || merchant_pattern || '%%'
-                   ORDER BY LENGTH(merchant_pattern) DESC
+                   WHERE match_mode='substring' AND source != 'llm'
+                     AND merchant_pattern != ''
+                     AND STRPOS(LOWER(%s), LOWER(merchant_pattern)) > 0
+                   ORDER BY LENGTH(merchant_pattern) DESC, merchant_pattern
                    LIMIT 1""",
                 (normalized_merchant,),
             )
@@ -37,7 +39,7 @@ def lookup_merchant_category(normalized_merchant: str) -> Optional[Dict[str, Any
             return dict(row) if row else None
     except Exception as e:
         log.error(f"Failed to look up merchant category: {e}")
-        return None
+        raise
     finally:
         conn.close()
 
@@ -55,19 +57,29 @@ def insert_merchant_category(
         with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO merchant_categories
-                       (merchant_pattern, category, subcategory, confidence, source)
-                   VALUES (%s, %s, %s, %s, %s)
+                       (merchant_pattern, category, subcategory, confidence, source, match_mode)
+                   VALUES (%s, %s, %s, %s, %s, %s)
                    ON CONFLICT (merchant_pattern) DO UPDATE SET
                        category = EXCLUDED.category,
                        subcategory = EXCLUDED.subcategory,
                        confidence = EXCLUDED.confidence,
                        source = EXCLUDED.source,
-                       updated_at = NOW()""",
-                (pattern, category, subcategory, confidence, source),
+                       match_mode = EXCLUDED.match_mode,
+                       updated_at = NOW()
+                   WHERE EXCLUDED.source != 'llm' OR merchant_categories.source != 'manual'""",
+                (
+                    pattern,
+                    category,
+                    subcategory,
+                    confidence,
+                    source,
+                    "exact" if source == "llm" else "substring",
+                ),
             )
+            changed = cur.rowcount > 0
             conn.commit()
             log.info(f"Upserted merchant category: '{pattern}' -> '{category}'")
-            return True
+            return changed
     except Exception as e:
         log.error(f"Failed to insert merchant category: {e}")
         conn.rollback()
@@ -97,7 +109,8 @@ def get_classification_stats() -> Dict[str, Any]:
     conn = get_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT
                     COUNT(*) as total_transactions,
                     COUNT(category) as classified,
@@ -105,10 +118,12 @@ def get_classification_stats() -> Dict[str, Any]:
                     COUNT(DISTINCT category) as distinct_categories
                 FROM transactions
                 WHERE status = 'success'
-            """)
+            """
+            )
             stats = dict(cur.fetchone())
 
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT
                     COALESCE(category, 'UNCLASSIFIED') as category,
                     COUNT(*) as count,
@@ -117,10 +132,12 @@ def get_classification_stats() -> Dict[str, Any]:
                 WHERE status = 'success'
                 GROUP BY category
                 ORDER BY count DESC
-            """)
+            """
+            )
             stats["by_category"] = [dict(row) for row in cur.fetchall()]
 
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT
                     COALESCE(classification_source, 'none') as source,
                     COUNT(*) as count
@@ -128,7 +145,8 @@ def get_classification_stats() -> Dict[str, Any]:
                 WHERE status = 'success'
                 GROUP BY classification_source
                 ORDER BY count DESC
-            """)
+            """
+            )
             stats["by_source"] = [dict(row) for row in cur.fetchall()]
             return stats
     except Exception as e:
