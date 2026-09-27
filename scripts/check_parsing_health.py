@@ -31,12 +31,10 @@ sys.path.append(os.getcwd())
 
 from datetime import datetime
 
-from dotenv import load_dotenv
 
 from app import db_health
 from app.gmail_auth import send_email
 
-load_dotenv()
 
 LOG_FILE = "logs/parsing_health.log"
 
@@ -61,8 +59,8 @@ def _format_examples(examples, fields) -> str:
     return "\n".join(lines)
 
 
-def check_parsing_health(window_days: int = 7) -> bool:
-    """Returns True if healthy, False if an alert was triggered (and sent)."""
+def check_parsing_health(window_days: int = 7, *, notify: bool = False) -> bool | None:
+    """True=sample passed, False=breach, None=insufficient evidence. Alerts are opt-in."""
     _log(f"{datetime.now():%Y-%m-%d %H:%M:%S} - Running parsing health check (window={window_days}d)...")
 
     blank = db_health.get_blank_merchant_stats(window_days)
@@ -98,6 +96,10 @@ def check_parsing_health(window_days: int = 7) -> bool:
     else:
         _log(f"'Other' category check skipped (only {other['total']} transactions in window, need >= {MIN_SAMPLE})")
 
+    if not breaches and min(blank['total'], other['total']) < MIN_SAMPLE:
+        _log("Parsing quality unknown: insufficient recent confirmed transactions.")
+        return None
+
     if not breaches:
         _log("Parsing health check passed.")
         return True
@@ -121,6 +123,9 @@ def check_parsing_health(window_days: int = 7) -> bool:
     for title, summary, _ in breaches:
         _log(f"⚠️  ALERT: {title} — {summary}")
 
+    if not notify:
+        return False
+
     try:
         send_email(subject, body)
         _log("Alert email sent.")
@@ -133,7 +138,8 @@ def check_parsing_health(window_days: int = 7) -> bool:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--window-days", type=int, default=7, help="Trailing window size in days (default: 7)")
+    parser.add_argument("--notify", action="store_true", help="Send an email on a quality breach")
     args = parser.parse_args()
 
-    healthy = check_parsing_health(args.window_days)
-    sys.exit(0 if healthy else 1)
+    healthy = check_parsing_health(args.window_days, notify=args.notify)
+    sys.exit(2 if healthy is None else 0 if healthy else 1)

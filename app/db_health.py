@@ -33,7 +33,7 @@ def get_blank_merchant_stats(window_days: int = 7) -> Dict[str, int]:
             return {"blank": row["blank"], "total": row["total"]}
     except Exception:
         log.exception("get_blank_merchant_stats failed")
-        return {"blank": 0, "total": 0}
+        raise
     finally:
         conn.close()
 
@@ -61,7 +61,7 @@ def get_other_category_stats(window_days: int = 7) -> Dict[str, int]:
             return {"other": row["other"], "total": row["total"]}
     except Exception:
         log.exception("get_other_category_stats failed")
-        return {"other": 0, "total": 0}
+        raise
     finally:
         conn.close()
 

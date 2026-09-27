@@ -11,11 +11,9 @@ import os
 import sys
 sys.path.append(os.getcwd())
 
-from dotenv import load_dotenv
 
 from app.gmail_auth import send_email
 
-load_dotenv()
 
 
 def send_alert(days_stale: int) -> None:

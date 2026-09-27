@@ -3,9 +3,7 @@ from datetime import datetime
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
-from dotenv import load_dotenv
 
-load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,3 +36,24 @@ app.include_router(api_router, prefix="/htmx")
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+@app.get("/ready")
+def readiness():
+    from app.db_connection import get_connection
+    from fastapi.responses import JSONResponse
+
+    try:
+        conn = get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""SELECT bool_and(to_regclass(name) IS NOT NULL)
+                    FROM unnest(ARRAY['transactions','raw_emails','merchant_categories',
+                        'extraction_reviews','transaction_notifications','pipeline_runs',
+                        'ingestion_checkpoints','email_processing_outcomes','classification_edits']) AS names(name)""")
+                ready = cur.fetchone()[0]
+        finally:
+            conn.close()
+    except Exception:
+        ready = False
+    return JSONResponse({"ready": ready}, status_code=200 if ready else 503)

@@ -18,7 +18,7 @@ def process_file(input_path, output_path):
         events.append(event)
         
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(events, f, indent=2)
+        json.dump(events, f, indent=2, default=str)
         
     print(f"Saved {len(events)} events to {output_path}")
     
