@@ -24,3 +24,14 @@ IMPLEMENTATION.md
 
 # Logs
 logs/
+
+# Private repair previews and receipts (contain financial records)
+/reports/
+
+# Local demo video assets and internal audit tooling (screenshots of real data)
+docs/demo/
+docs/audit/
+
+# Local tooling
+.ruff_cache/
+Design Mockup/
