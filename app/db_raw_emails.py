@@ -22,10 +22,10 @@ def parse_email_date(date_str: str) -> datetime:
         return datetime.now(timezone.utc)
 
 
-def insert_raw_emails(emails: List[Dict[str, Any]]) -> None:
-    """Batch-inserts raw email records, silently skipping any duplicates."""
+def insert_raw_emails(emails: List[Dict[str, Any]]) -> int:
+    """Persist raw emails idempotently and return the number newly stored."""
     if not emails:
-        return
+        return 0
 
     conn = get_connection()
     try:
@@ -50,8 +50,10 @@ def insert_raw_emails(emails: List[Dict[str, Any]]) -> None:
                 for e in emails
             ]
             cur.executemany(query, data_tuples)
+            inserted = cur.rowcount
             conn.commit()
-            log.info(f"Inserted/ignored {len(data_tuples)} raw emails.")
+            log.info("Stored %d new emails; skipped %d existing", inserted, len(data_tuples) - inserted)
+            return inserted
     except Exception as e:
         log.error(f"Failed to insert raw emails: {e}")
         conn.rollback()

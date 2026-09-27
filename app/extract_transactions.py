@@ -2,7 +2,7 @@
 Transaction Extraction Script
 
 Reads raw emails from the database and extracts transaction events.
-Only processes emails with status='success' (actual money movement).
+Only validated successful events enter the ledger; other messages await review.
 
 Usage:
     # Extract all unprocessed emails
@@ -11,11 +11,11 @@ Usage:
     # Extract specific number of emails (for testing)
     poetry run python app/extract_transactions.py --limit 10
 
-    # Extract all emails (re-process everything)
+    # Compatibility alias for unprocessed extraction
     poetry run python app/extract_transactions.py --all
 
-    # Extract emails from a specific date range
-    poetry run python app/extract_transactions.py --start-date 2025-12-01 --end-date 2025-12-31
+    # Retry reviewed messages after a parser fix
+    poetry run python app/extract_transactions.py --retry-review --limit 100
 """
 
 import sys
@@ -27,18 +27,20 @@ import logging
 from typing import List, Dict
 
 from app import db_transactions
-from app.transaction_event import extract_transaction, generate_transaction_id
+from app.transaction_event import extract_transaction
+from app.db_extraction import store_extraction, get_reviews
 
 log = logging.getLogger(__name__)
 
 
-def extract_and_insert_transactions(emails: List[Dict], filter_success_only: bool = True) -> Dict[str, int]:
+def extract_and_insert_transactions(emails: List[Dict], filter_success_only: bool = True, *, progress=None) -> Dict[str, int]:
     """
     Extracts transactions from raw emails and inserts into database.
 
     Args:
         emails: List of raw email dicts
-        filter_success_only: If True, only insert transactions with status='success'
+        filter_success_only: Retained for compatibility; only validated success
+            events enter the ledger. Other messages are always queued for review.
 
     Returns:
         Dict with extraction statistics
@@ -52,47 +54,41 @@ def extract_and_insert_transactions(emails: List[Dict], filter_success_only: boo
         'unknown': 0,
         'inserted': 0,
         'skipped': 0,
-        'errors': 0
+        'errors': 0,
+        'review': 0,
+        'rejected': 0,
+        'duplicate': 0
     }
 
-    transactions_to_insert = []
-
     for email in emails:
+        event = extract_transaction(email)
+        stats['extracted'] += 1
+        status = event.get('status', 'unknown')
+        stats[status] = stats.get(status, 0) + 1
+        # Even --include-failed cannot admit unconfirmed movement to the ledger.
+        # Non-success and malformed events remain visible in the review queue.
         try:
-            # Extract transaction event
-            event = extract_transaction(email)
-            stats['extracted'] += 1
-
-            # Count by status
-            status = event.get('status', 'unknown')
-            stats[status] = stats.get(status, 0) + 1
-
-            # Filter: only insert successful transactions (actual money movement)
-            if filter_success_only and status != 'success':
-                stats['skipped'] += 1
-                log.debug(f"Skipping {status} transaction from email {email.get('id')}")
-                continue
-
-            # Generate transaction ID
-            event['transaction_id'] = generate_transaction_id(event)
-
-            transactions_to_insert.append(event)
-
-        except Exception as e:
-            stats['errors'] += 1
-            log.error(f"Failed to extract transaction from email {email.get('id')}: {e}")
-
-    # Batch insert transactions
-    if transactions_to_insert:
-        try:
-            inserted_count = db_transactions.insert_transactions(transactions_to_insert)
-            stats['inserted'] = inserted_count
-            log.info(f"Successfully inserted {inserted_count} transactions")
-        except Exception as e:
-            log.error(f"Failed to insert transactions into database: {e}")
+            outcome = store_extraction(event)
+        except Exception as exc:
+            if progress is not None:
+                progress['failed'] = progress.get('failed', 0) + 1
+            from app.db_connection import get_connection
+            from app.db_pipeline import record_outcome
+            try:
+                conn = get_connection()
+                try:
+                    with conn:
+                        record_outcome(conn, event, 'failed', type(exc).__name__)
+                finally:
+                    conn.close()
+            except Exception:
+                log.exception('Could not persist message failure; original error follows')
             raise
-    else:
-        log.info("No transactions to insert (all filtered out or extraction failed)")
+        stats[outcome] += 1
+        if progress is not None:
+            progress[outcome] = progress.get(outcome, 0) + 1
+        if outcome in ('review', 'rejected'):
+            stats['skipped'] += 1
 
     return stats
 
@@ -111,7 +107,10 @@ def print_stats(stats: Dict[str, int]):
     print(f"  ❓ Unknown:               {stats['unknown']}")
     print(f"\n--- Database Operations ---")
     print(f"  💾 Inserted to DB:        {stats['inserted']}")
-    print(f"  ⏭️  Skipped (non-success): {stats['skipped']}")
+    print(f"  ⏭️  Excluded from ledger:  {stats['skipped']}")
+    print(f"  🔎 Awaiting review:        {stats['review']}")
+    print(f"  Known non-transactions:   {stats['rejected']}")
+    print(f"  ↔️  Duplicate notices:     {stats['duplicate']}")
     print(f"  ⚠️  Errors:                {stats['errors']}")
     print("="*60 + "\n")
 
@@ -138,18 +137,11 @@ def extract_unprocessed():
 
 def extract_all():
     """
-    NOTE: despite the name, this does NOT re-extract already-processed emails.
-    insert_transactions()'s ON CONFLICT clause overwrites `category` with
-    whatever extract_transaction() produces, which is always None (categorization
-    happens later in classify_transactions.py) — re-running extraction over
-    already-classified emails would silently wipe out existing categories,
-    including manual corrections. Until that UPSERT is made category-safe,
-    --all is intentionally just an alias for --unprocessed-only.
+    Compatibility alias for unprocessed extraction, not a historical backfill.
+    Replay now preserves classification, but parser/event-identity changes still
+    need a separate reviewed backfill workflow before enabling full re-extraction.
     """
-    log.info("Fetching all emails from database...")
-    log.warning("--all is currently equivalent to --unprocessed-only (see docstring).")
-    log.warning("To force full re-extraction, truncate transactions table first:")
-    log.warning("  psql -U postgres -d expenso -c 'TRUNCATE transactions;'")
+    log.warning("--all is currently equivalent to --unprocessed-only.")
 
     extract_unprocessed()
 
@@ -189,7 +181,7 @@ def main():
     parser.add_argument(
         '--all',
         action='store_true',
-        help='Re-process ALL emails (warning: may create duplicates if not careful)'
+        help='Compatibility alias for --unprocessed-only; does not backfill history'
     )
 
     parser.add_argument(
@@ -201,7 +193,7 @@ def main():
     parser.add_argument(
         '--include-failed',
         action='store_true',
-        help='Include failed/attempted transactions (default: success only)'
+        help='Compatibility option: failed/attempted messages always go to review'
     )
 
     parser.add_argument(
@@ -210,6 +202,8 @@ def main():
         help='Show transaction statistics and exit'
     )
 
+    parser.add_argument('--retry-review', action='store_true',
+                        help='Reparse up to --limit (default 100) review messages after a parser fix')
     args = parser.parse_args()
 
     # Show stats only
@@ -224,7 +218,11 @@ def main():
         return
 
     # Default: unprocessed only
-    if args.limit:
+    if args.retry_review:
+        reviews = get_reviews(limit=args.limit or 100)['reviews']
+        emails = db_transactions.get_raw_emails_by_ids([r['raw_email_id'] for r in reviews])
+        print_stats(extract_and_insert_transactions(emails))
+    elif args.limit:
         extract_with_limit(args.limit)
     elif args.all:
         extract_all()
